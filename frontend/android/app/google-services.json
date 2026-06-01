@@ -1,0 +1,90 @@
+{
+  "project_info": {
+    "project_number": "373731403649",
+    "project_id": "videoestimate-41322",
+    "storage_bucket": "videoestimate-41322.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:373731403649:android:aa16d3409b17eaf9b62a80",
+        "android_client_info": {
+          "package_name": "ai.buildercam"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "373731403649-oprr7rsi60shcpeea4dh4qacqjs6ll5n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbk7KT0r7b4in89IOcgUVT03Gav-Ontig"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "373731403649-oprr7rsi60shcpeea4dh4qacqjs6ll5n.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "373731403649-pibp5g4eeiifl0u4f5gcosmchc89nrs3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.app"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:373731403649:android:ec0571c86c6e432db62a80",
+        "android_client_info": {
+          "package_name": "com.example.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "373731403649-ivns6r1ekl8gblajd1trp4dc63pf3moe.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.app",
+            "certificate_hash": "8e37b29841645a200e9454825ed19c00d5b18a10"
+          }
+        },
+        {
+          "client_id": "373731403649-oprr7rsi60shcpeea4dh4qacqjs6ll5n.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAbk7KT0r7b4in89IOcgUVT03Gav-Ontig"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "373731403649-oprr7rsi60shcpeea4dh4qacqjs6ll5n.apps.googleusercontent.com",
+              "client_type": 3
+            },
+            {
+              "client_id": "373731403649-pibp5g4eeiifl0u4f5gcosmchc89nrs3.apps.googleusercontent.com",
+              "client_type": 2,
+              "ios_info": {
+                "bundle_id": "com.example.app"
+              }
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

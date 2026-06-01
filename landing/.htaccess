@@ -1,0 +1,3 @@
+PassengerNodejs /usr/local/bin/node
+PassengerAppType node
+PassengerStartupFile app.js

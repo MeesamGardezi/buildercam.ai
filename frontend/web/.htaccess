@@ -1,0 +1,25 @@
+Options -MultiViews
+
+RewriteEngine On
+
+# Serve existing files and directories directly (assets, JS, CSS, etc.)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Rewrite all other routes to index.html for Flutter's client-side router
+RewriteRule ^ /index.html [L]
+
+# Security headers
+Header always set X-Frame-Options "SAMEORIGIN"
+Header always set X-Content-Type-Options "nosniff"
+Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+# Cache static assets aggressively (Flutter adds content hashes to filenames)
+<FilesMatch "\.(js|css|wasm|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$">
+  Header set Cache-Control "public, max-age=31536000, immutable"
+</FilesMatch>
+
+# Never cache index.html or the service worker
+<FilesMatch "^(index\.html|flutter_service_worker\.js|flutter_boot.    strap\.js)$">
+  Header set Cache-Control "no-store, no-cache, must-revalidate"
+</FilesMatch>
