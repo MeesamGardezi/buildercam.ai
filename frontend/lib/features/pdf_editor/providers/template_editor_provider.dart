@@ -705,6 +705,8 @@ class TemplateEditorProvider extends ChangeNotifier {
       LogoElement le => le.copyWith(zIndex: maxZ + 1),
       SignatureBlockElement sb => sb.copyWith(zIndex: maxZ + 1),
       DividerElement de => de.copyWith(zIndex: maxZ + 1),
+      ShapeElement se => se.copyWith(zIndex: maxZ + 1),
+      ContainerElement ce => ce.copyWith(zIndex: maxZ + 1),
     };
   }
 
@@ -899,6 +901,8 @@ class TemplateEditorProvider extends ChangeNotifier {
         LogoElement le => le.copyWith(x: x, y: y),
         SignatureBlockElement sb => sb.copyWith(x: x, y: y),
         DividerElement de => de.copyWith(x: x, y: y),
+        ShapeElement se => se.copyWith(x: x, y: y),
+        ContainerElement ce => ce.copyWith(x: x, y: y),
       };
 
   // ── Nudge (arrow keys) ────────────────────────────────────────────────
@@ -971,6 +975,8 @@ class TemplateEditorProvider extends ChangeNotifier {
         SignatureBlockElement sb =>
           sb.copyWith(x: x, y: y, width: w, height: h),
         DividerElement de => de.copyWith(x: x, y: y, width: w, height: h),
+        ShapeElement se => se.copyWith(x: x, y: y, width: w, height: h),
+        ContainerElement ce => ce.copyWith(x: x, y: y, width: w, height: h),
       };
 
   // ── Z-order ───────────────────────────────────────────────────────────
@@ -1038,6 +1044,8 @@ class TemplateEditorProvider extends ChangeNotifier {
         LogoElement le => le.copyWith(zIndex: z),
         SignatureBlockElement sb => sb.copyWith(zIndex: z),
         DividerElement de => de.copyWith(zIndex: z),
+        ShapeElement se => se.copyWith(zIndex: z),
+        ContainerElement ce => ce.copyWith(zIndex: z),
       };
 
   // ── Copy / Paste / Duplicate ──────────────────────────────────────────
@@ -1106,6 +1114,8 @@ class TemplateEditorProvider extends ChangeNotifier {
         LogoElement le => le.copyWith(rotation: r),
         SignatureBlockElement sb => sb.copyWith(rotation: r),
         DividerElement de => de.copyWith(rotation: r),
+        ShapeElement se => se.copyWith(rotation: r),
+        ContainerElement ce => ce.copyWith(rotation: r),
       };
 
   // ── Style updates ──────────────────────────────────────────────────────
@@ -1159,6 +1169,8 @@ class TemplateEditorProvider extends ChangeNotifier {
         LogoElement le => le.copyWith(visible: v),
         SignatureBlockElement sb => sb.copyWith(visible: v),
         DividerElement de => de.copyWith(visible: v),
+        ShapeElement se => se.copyWith(visible: v),
+        ContainerElement ce => ce.copyWith(visible: v),
       };
 
   TemplateElement _setLocked(TemplateElement el, bool v) => switch (el) {
@@ -1168,6 +1180,8 @@ class TemplateEditorProvider extends ChangeNotifier {
         LogoElement le => le.copyWith(locked: v),
         SignatureBlockElement sb => sb.copyWith(locked: v),
         DividerElement de => de.copyWith(locked: v),
+        ShapeElement se => se.copyWith(locked: v),
+        ContainerElement ce => ce.copyWith(locked: v),
       };
 
   // ── Alignment ─────────────────────────────────────────────────────────

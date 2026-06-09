@@ -141,6 +141,8 @@ sealed class TemplateElement {
       ElementType.logo => LogoElement.fromJson(json),
       ElementType.signatureBlock => SignatureBlockElement.fromJson(json),
       ElementType.divider => DividerElement.fromJson(json),
+      ElementType.shape => ShapeElement.fromJson(json),
+      ElementType.container => ContainerElement.fromJson(json),
     };
   }
 
@@ -177,6 +179,8 @@ class TextElement extends TemplateElement {
   final double lineHeight;
   final double letterSpacing;
   final Color? backgroundColor;
+  final bool underline;
+  final bool strikethrough;
 
   const TextElement({
     required super.id,
@@ -199,6 +203,8 @@ class TextElement extends TemplateElement {
     required this.letterSpacing,
     this.backgroundColor,
     this.textStyle,
+    this.underline = false,
+    this.strikethrough = false,
   }) : super(type: ElementType.text);
 
   factory TextElement.defaults({
@@ -249,6 +255,8 @@ class TextElement extends TemplateElement {
     double? lineHeight,
     double? letterSpacing,
     Color? backgroundColor,
+    bool? underline,
+    bool? strikethrough,
   }) =>
       TextElement(
         id: id ?? this.id,
@@ -270,6 +278,8 @@ class TextElement extends TemplateElement {
         lineHeight: lineHeight ?? this.lineHeight,
         letterSpacing: letterSpacing ?? this.letterSpacing,
         backgroundColor: backgroundColor ?? this.backgroundColor,
+        underline: underline ?? this.underline,
+        strikethrough: strikethrough ?? this.strikethrough,
       );
 
   @override
@@ -286,6 +296,8 @@ class TextElement extends TemplateElement {
           'lineHeight': lineHeight,
           'letterSpacing': letterSpacing,
           if (backgroundColor != null) 'backgroundColor': backgroundColor!.toARGB32(),
+          if (underline) 'underline': true,
+          if (strikethrough) 'strikethrough': true,
         },
       };
 
@@ -313,6 +325,8 @@ class TextElement extends TemplateElement {
       backgroundColor: style['backgroundColor'] != null
           ? _parseColor(style['backgroundColor'])
           : null,
+      underline: _asBool(style['underline']),
+      strikethrough: _asBool(style['strikethrough']),
     );
   }
 }
@@ -921,5 +935,239 @@ class DividerElement extends TemplateElement {
           (s) => s.name == _asString(json['dashStyle']),
           orElse: () => DividerDashStyle.solid,
         ),
+      );
+}
+
+// ── Shape ────────────────────────────────────────────────────────────────────
+
+enum ShapeKind { rectangle, ellipse, triangle }
+
+class ShapeElement extends TemplateElement {
+  final ShapeKind shapeKind;
+  final Color fillColor;
+  final Color borderColor;
+  final double borderWidth;
+  final double opacity;
+  final double borderRadius;
+
+  const ShapeElement({
+    required super.id,
+    required super.x,
+    required super.y,
+    required super.width,
+    required super.height,
+    required super.zIndex,
+    required super.locked,
+    required super.visible,
+    super.rotation,
+    required this.shapeKind,
+    required this.fillColor,
+    required this.borderColor,
+    required this.borderWidth,
+    required this.opacity,
+    required this.borderRadius,
+  }) : super(type: ElementType.shape);
+
+  factory ShapeElement.defaults({
+    double x = 60,
+    double y = 60,
+    double width = 150,
+    double height = 100,
+    int zIndex = 0,
+    ShapeKind shapeKind = ShapeKind.rectangle,
+  }) =>
+      ShapeElement(
+        id: TemplateElement._newId(),
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        zIndex: zIndex,
+        locked: false,
+        visible: true,
+        shapeKind: shapeKind,
+        fillColor: const Color(0xFFDBEAFE),
+        borderColor: const Color(0xFF3B82F6),
+        borderWidth: 2,
+        opacity: 1.0,
+        borderRadius: 8,
+      );
+
+  ShapeElement copyWith({
+    String? id,
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+    int? zIndex,
+    bool? locked,
+    bool? visible,
+    int? rotation,
+    ShapeKind? shapeKind,
+    Color? fillColor,
+    Color? borderColor,
+    double? borderWidth,
+    double? opacity,
+    double? borderRadius,
+  }) =>
+      ShapeElement(
+        id: id ?? this.id,
+        x: x ?? this.x,
+        y: y ?? this.y,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        zIndex: zIndex ?? this.zIndex,
+        locked: locked ?? this.locked,
+        visible: visible ?? this.visible,
+        rotation: rotation ?? this.rotation,
+        shapeKind: shapeKind ?? this.shapeKind,
+        fillColor: fillColor ?? this.fillColor,
+        borderColor: borderColor ?? this.borderColor,
+        borderWidth: borderWidth ?? this.borderWidth,
+        opacity: opacity ?? this.opacity,
+        borderRadius: borderRadius ?? this.borderRadius,
+      );
+
+  @override
+  Map<String, dynamic> toJson() => {
+        ..._baseJson(),
+        'shapeKind': shapeKind.name,
+        'fillColor': fillColor.toARGB32(),
+        'borderColor': borderColor.toARGB32(),
+        'borderWidth': borderWidth,
+        'opacity': opacity,
+        'borderRadius': borderRadius,
+      };
+
+  factory ShapeElement.fromJson(Map<String, dynamic> json) => ShapeElement(
+        id: _asString(json['id']),
+        x: _asDouble(json['x']),
+        y: _asDouble(json['y']),
+        width: _asDouble(json['width']),
+        height: _asDouble(json['height']),
+        zIndex: _asInt(json['zIndex']),
+        locked: _asBool(json['locked']),
+        visible: _asBool(json['visible'], true),
+        rotation: _asInt(json['rotation']),
+        shapeKind: ShapeKind.values.firstWhere(
+          (k) => k.name == _asString(json['shapeKind']),
+          orElse: () => ShapeKind.rectangle,
+        ),
+        fillColor: _parseColor(json['fillColor'], 0xFFDBEAFE),
+        borderColor: _parseColor(json['borderColor'], 0xFF3B82F6),
+        borderWidth: _asDouble(json['borderWidth'], 2),
+        opacity: _asDouble(json['opacity'], 1.0),
+        borderRadius: _asDouble(json['borderRadius'], 8),
+      );
+}
+
+// ── Container ────────────────────────────────────────────────────────────────
+
+class ContainerElement extends TemplateElement {
+  final Color fillColor;
+  final Color borderColor;
+  final double borderWidth;
+  final double borderRadius;
+  final double opacity;
+
+  const ContainerElement({
+    required super.id,
+    required super.x,
+    required super.y,
+    required super.width,
+    required super.height,
+    required super.zIndex,
+    required super.locked,
+    required super.visible,
+    super.rotation,
+    required this.fillColor,
+    required this.borderColor,
+    required this.borderWidth,
+    required this.borderRadius,
+    required this.opacity,
+  }) : super(type: ElementType.container);
+
+  factory ContainerElement.defaults({
+    double x = 40,
+    double y = 40,
+    double width = 200,
+    double height = 120,
+    int zIndex = 0,
+  }) =>
+      ContainerElement(
+        id: TemplateElement._newId(),
+        x: x,
+        y: y,
+        width: width,
+        height: height,
+        zIndex: zIndex,
+        locked: false,
+        visible: true,
+        fillColor: const Color(0x00FFFFFF),
+        borderColor: const Color(0xFF94A3B8),
+        borderWidth: 1,
+        borderRadius: 6,
+        opacity: 1.0,
+      );
+
+  ContainerElement copyWith({
+    String? id,
+    double? x,
+    double? y,
+    double? width,
+    double? height,
+    int? zIndex,
+    bool? locked,
+    bool? visible,
+    int? rotation,
+    Color? fillColor,
+    Color? borderColor,
+    double? borderWidth,
+    double? borderRadius,
+    double? opacity,
+  }) =>
+      ContainerElement(
+        id: id ?? this.id,
+        x: x ?? this.x,
+        y: y ?? this.y,
+        width: width ?? this.width,
+        height: height ?? this.height,
+        zIndex: zIndex ?? this.zIndex,
+        locked: locked ?? this.locked,
+        visible: visible ?? this.visible,
+        rotation: rotation ?? this.rotation,
+        fillColor: fillColor ?? this.fillColor,
+        borderColor: borderColor ?? this.borderColor,
+        borderWidth: borderWidth ?? this.borderWidth,
+        borderRadius: borderRadius ?? this.borderRadius,
+        opacity: opacity ?? this.opacity,
+      );
+
+  @override
+  Map<String, dynamic> toJson() => {
+        ..._baseJson(),
+        'fillColor': fillColor.toARGB32(),
+        'borderColor': borderColor.toARGB32(),
+        'borderWidth': borderWidth,
+        'borderRadius': borderRadius,
+        'opacity': opacity,
+      };
+
+  factory ContainerElement.fromJson(Map<String, dynamic> json) =>
+      ContainerElement(
+        id: _asString(json['id']),
+        x: _asDouble(json['x']),
+        y: _asDouble(json['y']),
+        width: _asDouble(json['width']),
+        height: _asDouble(json['height']),
+        zIndex: _asInt(json['zIndex']),
+        locked: _asBool(json['locked']),
+        visible: _asBool(json['visible'], true),
+        rotation: _asInt(json['rotation']),
+        fillColor: _parseColor(json['fillColor'], 0x00FFFFFF),
+        borderColor: _parseColor(json['borderColor'], 0xFF94A3B8),
+        borderWidth: _asDouble(json['borderWidth'], 1),
+        borderRadius: _asDouble(json['borderRadius'], 6),
+        opacity: _asDouble(json['opacity'], 1.0),
       );
 }

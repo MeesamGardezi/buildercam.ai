@@ -48,8 +48,8 @@ __pycache__/
 
 # Secrets and local config
 **/firebase-key.json
-.env
-.env.*
+**/.env
+**/.env.*
 
 # Miscellaneous
 history/

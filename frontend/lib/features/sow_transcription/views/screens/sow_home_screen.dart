@@ -38,6 +38,7 @@ class SowHomeScreen extends StatefulWidget {
     this.showPdfEditor = false,
     this.pdfEditorArgs,
     this.initialPdfDocId,
+    this.initialEditingTemplateId,
   });
 
   /// Provides the current user's Firebase ID token for authenticated requests.
@@ -64,6 +65,9 @@ class SowHomeScreen extends StatefulWidget {
   /// If set, the standalone PDF document with this ID is shown in the main panel.
   /// Use 'new' to open a blank editor that creates a new document on save.
   final String? initialPdfDocId;
+
+  /// If set, the PDF template with this ID is opened for editing in the main panel.
+  final String? initialEditingTemplateId;
 
   @override
   State<SowHomeScreen> createState() => _SowHomeScreenState();
@@ -113,6 +117,10 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
   String? _currentPdfDocId;
   PdfDocumentModel? _currentPdfDoc;
   bool _pdfDocLoading = false;
+
+  /// When non-null, the editor is in "edit PDF template" mode.
+  /// [onSave] is hidden; toolbar shows "Update Template" instead.
+  Map<String, dynamic>? _editingPdfTemplate;
 
   /// Name entered in the "New PDF" dialog before the editor opens.
   /// Used so the first save doesn't re-prompt for a name.
@@ -202,6 +210,12 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
       setState(() => _currentPdfArgs = widget.pdfEditorArgs);
     }
 
+    // Template editing state: clear when navigating away (query param removed).
+    if (widget.initialEditingTemplateId != oldWidget.initialEditingTemplateId &&
+        widget.initialEditingTemplateId == null) {
+      setState(() => _editingPdfTemplate = null);
+    }
+
     // Standalone PDF document ID changed.
     if (widget.initialPdfDocId != oldWidget.initialPdfDocId) {
       final newDocId = widget.initialPdfDocId;
@@ -229,6 +243,7 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
         _selectedProject = null;
         _selectedTranscripts = [];
         _errorMessage = null;
+        _editingPdfTemplate = null;
       });
       return;
     }
@@ -239,12 +254,14 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
         setState(() {
           _selectedProject = matches.first;
           _errorMessage = null;
+          _editingPdfTemplate = null;
         });
         unawaited(_loadSelectedProject(newProjectId));
         return;
       }
     }
     // Not found locally — do a full reload (e.g., deep-link / direct URL entry).
+    setState(() => _editingPdfTemplate = null);
     unawaited(_loadProjects());
   }
 
@@ -579,10 +596,33 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
 
         if (isPhone) {
           // On mobile, SOW doc / PDF editor replace the whole layout.
+          if (_editingPdfTemplate != null) {
+            final tpl = _editingPdfTemplate!;
+            final rawJson = tpl['pdfJson'];
+            final initialData = rawJson is Map<String, dynamic>
+                ? PdfDocumentData.fromJson(rawJson)
+                : PdfDocumentData.empty(
+                    name: tpl['name'] as String? ?? 'Template');
+            return DeferredLoader(
+              loadLibrary: pdf_editor.loadLibrary,
+              builder: (context) => pdf_editor.PdfEditorWidget(
+                initialData: initialData,
+                apiBaseUrl: ApiConfig.sowProxyBaseUrl,
+                companyId: '',
+                frameUrls: const [],
+                tokenProvider: widget.tokenProvider,
+                onClose: _exitTemplateEditor,
+                onTemplateSaved: _loadTemplates,
+                initialTemplateId: tpl['id']?.toString(),
+              ),
+            );
+          }
           if (_currentPdfDocId != null) {
             if (_pdfDocLoading) {
               return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
+                body: SafeArea(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
               );
             }
             final initialData = _currentPdfDoc != null
@@ -626,7 +666,9 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
           if (_currentSowId != null) {
             if (_sowDocLoading) {
               return const Scaffold(
-                body: Center(child: CircularProgressIndicator()),
+                body: SafeArea(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
               );
             }
             final args = _currentSowDocArgs;
@@ -699,6 +741,19 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
             onGoToProjects: () => context.go(AppRoute.home.path),
             onDeleteProject: _deleteProject,
             backendService: _backendService,
+            templates: _templates,
+            pdfTemplates: _pdfTemplates,
+            templatesLoading: _templatesLoading,
+            onOpenTemplate: (template) => SowDocumentScreen.show(
+              context,
+              projectName: template.name,
+              content: template.content,
+              backendService: null,
+            ),
+            onDeleteTemplate: _deleteTemplate,
+            onEditPdfTemplate: _editPdfTemplate,
+            onDeletePdfTemplate: _deletePdfTemplate,
+            onCreateTemplate: _createTemplate,
             initialTab: _currentTab,
           );
         }
@@ -722,8 +777,8 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
             backendService: null,
           ),
           onDeleteTemplate: _deleteTemplate,
-          onUsePdfTemplate: _usePdfTemplate,
           onDeletePdfTemplate: _deletePdfTemplate,
+          onEditPdfTemplate: _editPdfTemplate,
           onCreateTemplate: _createTemplate,
           embedded: true,
         );
@@ -757,6 +812,28 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
   Widget _buildDesktopMainPanel() {
     final activeProjectId =
         _selectedProject?.id ?? widget.initialProjectId;
+    // Template-edit mode: open a saved PDF template for direct editing.
+    // The editor toolbar shows "Update Template" instead of a project Save.
+    if (_editingPdfTemplate != null) {
+      final tpl = _editingPdfTemplate!;
+      final rawJson = tpl['pdfJson'];
+      final initialData = rawJson is Map<String, dynamic>
+          ? PdfDocumentData.fromJson(rawJson)
+          : PdfDocumentData.empty(name: tpl['name'] as String? ?? 'Template');
+      return DeferredLoader(
+        loadLibrary: pdf_editor.loadLibrary,
+        builder: (context) => pdf_editor.PdfEditorWidget(
+          initialData: initialData,
+          apiBaseUrl: ApiConfig.sowProxyBaseUrl,
+          companyId: '',
+          frameUrls: const [],
+          tokenProvider: widget.tokenProvider,
+          onClose: _exitTemplateEditor,
+          onTemplateSaved: _loadTemplates,
+          initialTemplateId: tpl['id']?.toString(),
+        ),
+      );
+    }
     // Standalone PDF document mode.
     if (_currentPdfDocId != null) {
       if (_pdfDocLoading) {
@@ -1153,9 +1230,19 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
         ),
       ]);
       if (!mounted) return;
+      final pdfTemplates = results[1] as List<Map<String, dynamic>>;
       setState(() {
         _templates = results[0] as List<SowTemplateModel>;
-        _pdfTemplates = results[1] as List<Map<String, dynamic>>;
+        _pdfTemplates = pdfTemplates;
+        // Restore template editor after a browser refresh.
+        if (_editingPdfTemplate == null &&
+            widget.initialEditingTemplateId != null) {
+          final matches = pdfTemplates.where(
+            (t) => t['id']?.toString() ==
+                Uri.decodeQueryComponent(widget.initialEditingTemplateId!),
+          );
+          if (matches.isNotEmpty) _editingPdfTemplate = matches.first;
+        }
       });
     } catch (_) {
       // Non-critical — silently ignore template load errors.
@@ -1175,90 +1262,84 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
     }
   }
 
-  Future<void> _usePdfTemplate(Map<String, dynamic> tpl) async {
+  /// Opens a PDF template in the editor for direct editing (no project save).
+  /// Clicking "Update Template" in the editor will PUT the changes back.
+  void _editPdfTemplate(Map<String, dynamic> tpl) {
+    // Navigate with ?editTemplate=<id> so the URL reflects the open editor
+    // and any sub-route (e.g. /pdf/:docId) is dropped via didUpdateWidget.
+    final templateId = Uri.encodeQueryComponent(
+        tpl['id']?.toString() ?? '');
     final projectId = _selectedProject?.id ?? widget.initialProjectId;
-    if (projectId == null) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Select a project before using a PDF template.'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-      return;
+    if (projectId != null) {
+      context.go('/project/$projectId?editTemplate=$templateId');
+    } else {
+      context.go('${AppRoute.home.path}?editTemplate=$templateId');
     }
-    final pdfJson = tpl['pdfJson'];
-    if (pdfJson is! Map<String, dynamic>) return;
-    try {
-      final saved = await _backendService.savePdfDocument(
-        projectId: projectId,
-        title: (tpl['name'] as String?)?.trim().isNotEmpty == true
-            ? tpl['name'] as String
-            : 'Untitled PDF',
-        pdfData: pdfJson,
-      );
-      if (!mounted) return;
-      setState(() => _workspaceReloadVersion++);
-      context.go('/project/$projectId/pdf/${saved.id}');
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to open template: $e'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+    setState(() {
+      _editingPdfTemplate = tpl;
+      _currentPdfDocId = null;
+      _currentPdfDoc = null;
+      _pendingNewPdfName = null;
+    });
+  }
+
+  void _exitTemplateEditor() {
+    setState(() => _editingPdfTemplate = null);
+    final projectId = _selectedProject?.id ?? widget.initialProjectId;
+    if (projectId != null) {
+      context.go('/project/$projectId');
+    } else {
+      context.go(AppRoute.home.path);
     }
   }
 
-  Future<void> _createTemplate() async {
+  void _createTemplate() {
     final projectId = _selectedProject?.id ?? widget.initialProjectId;
-    if (projectId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Select a project before creating a PDF.'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
+
+    // `value` is captured by the callbacks below — no TextEditingController
+    // needed, which avoids "used after being disposed" errors that occur when
+    // the controller is disposed while the dialog's exit animation is still
+    // running.
+    String value = '';
+
+    void submit(BuildContext ctx) {
+      final finalName = value.trim().isEmpty ? 'Untitled PDF' : value.trim();
+      // Set the name and navigate BEFORE popping the dialog so that both
+      // operations are batched into the same frame. This prevents Duplicate
+      // GlobalKey and InheritedWidget assertion errors that arise when
+      // context.go() is called while the dialog's exit animation is still
+      // in flight.
+      _pendingNewPdfName = finalName;
+      context.go('/project/$projectId/pdf/new');
+      Navigator.of(ctx).pop();
     }
 
-    final nameCtrl = TextEditingController();
-    final confirmed = await showDialog<bool>(
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('New PDF'),
         content: TextField(
-          controller: nameCtrl,
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'PDF name',
             hintText: 'e.g. "Proposal for Client A"',
             border: OutlineInputBorder(),
           ),
-          onSubmitted: (_) => Navigator.of(ctx).pop(true),
+          onChanged: (v) => value = v,
+          onSubmitted: (_) => submit(ctx),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
+            onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: () => submit(ctx),
             child: const Text('Create'),
           ),
         ],
       ),
     );
-
-    final name = nameCtrl.text.trim();
-    nameCtrl.dispose();
-    if (confirmed != true || !mounted) return;
-
-    final finalName = name.isEmpty ? 'Untitled PDF' : name;
-    _pendingNewPdfName = finalName;
-    context.go('/project/$projectId/pdf/new');
   }
 
   Future<void> _deleteTemplate(String templateId) async {
@@ -1294,6 +1375,14 @@ class _MobileLayout extends StatefulWidget {
     required this.onGoToProjects,
     required this.onDeleteProject,
     required this.backendService,
+    required this.templates,
+    required this.pdfTemplates,
+    required this.templatesLoading,
+    required this.onOpenTemplate,
+    required this.onDeleteTemplate,
+    required this.onEditPdfTemplate,
+    required this.onDeletePdfTemplate,
+    required this.onCreateTemplate,
     this.initialTab,
   });
 
@@ -1313,6 +1402,14 @@ class _MobileLayout extends StatefulWidget {
   final VoidCallback onGoToProjects;
   final Future<void> Function(String projectId) onDeleteProject;
   final SowBackendService backendService;
+  final List<SowTemplateModel> templates;
+  final List<Map<String, dynamic>> pdfTemplates;
+  final bool templatesLoading;
+  final void Function(SowTemplateModel template) onOpenTemplate;
+  final void Function(String templateId) onDeleteTemplate;
+  final void Function(Map<String, dynamic> template) onEditPdfTemplate;
+  final void Function(String templateId) onDeletePdfTemplate;
+  final VoidCallback onCreateTemplate;
   final String? initialTab;
 
   @override
@@ -1322,22 +1419,29 @@ class _MobileLayout extends StatefulWidget {
 class _MobileLayoutState extends State<_MobileLayout> {
   @override
   Widget build(BuildContext context) {
-    // No project selected → full-screen projects list
+    // No project selected → projects + templates tab view
     if (widget.selectedProject == null) {
       return Scaffold(
         resizeToAvoidBottomInset: true,
         body: SafeArea(
-          child: _MobileProjectsTab(
+          child: _MobileHomeTabView(
             loading: widget.loading,
             errorMessage: widget.errorMessage,
             projects: widget.filteredProjects,
             allProjects: widget.projects,
-            selectedProjectId: null,
             searchController: widget.searchController,
             onSearchChanged: widget.onSearchChanged,
             onCreateProject: widget.onCreateProject,
             onRefresh: widget.onRefresh,
             onSelectProject: widget.onSelectProject,
+            templates: widget.templates,
+            pdfTemplates: widget.pdfTemplates,
+            templatesLoading: widget.templatesLoading,
+            onOpenTemplate: widget.onOpenTemplate,
+            onDeleteTemplate: widget.onDeleteTemplate,
+            onEditPdfTemplate: widget.onEditPdfTemplate,
+            onDeletePdfTemplate: widget.onDeletePdfTemplate,
+            onCreateTemplate: widget.onCreateTemplate,
           ),
         ),
       );
@@ -1380,6 +1484,300 @@ class _MobileLayoutState extends State<_MobileLayout> {
             initialTab: widget.initialTab,
           ),
         ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mobile Home: Projects + Templates tabs (shown when no project is selected)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _MobileHomeTabView extends StatefulWidget {
+  const _MobileHomeTabView({
+    required this.loading,
+    required this.errorMessage,
+    required this.projects,
+    required this.allProjects,
+    required this.searchController,
+    required this.onSearchChanged,
+    required this.onCreateProject,
+    required this.onRefresh,
+    required this.onSelectProject,
+    required this.templates,
+    required this.pdfTemplates,
+    required this.templatesLoading,
+    required this.onOpenTemplate,
+    required this.onDeleteTemplate,
+    required this.onEditPdfTemplate,
+    required this.onDeletePdfTemplate,
+    required this.onCreateTemplate,
+  });
+
+  final bool loading;
+  final String? errorMessage;
+  final List<SowProjectModel> projects;
+  final List<SowProjectModel> allProjects;
+  final TextEditingController searchController;
+  final VoidCallback onSearchChanged;
+  final VoidCallback onCreateProject;
+  final VoidCallback onRefresh;
+  final Future<void> Function(SowProjectModel project) onSelectProject;
+  final List<SowTemplateModel> templates;
+  final List<Map<String, dynamic>> pdfTemplates;
+  final bool templatesLoading;
+  final void Function(SowTemplateModel template) onOpenTemplate;
+  final void Function(String templateId) onDeleteTemplate;
+  final void Function(Map<String, dynamic> template) onEditPdfTemplate;
+  final void Function(String templateId) onDeletePdfTemplate;
+  final VoidCallback onCreateTemplate;
+
+  @override
+  State<_MobileHomeTabView> createState() => _MobileHomeTabViewState();
+}
+
+class _MobileHomeTabViewState extends State<_MobileHomeTabView>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final totalTemplates =
+        widget.templates.length + widget.pdfTemplates.length;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        // App bar
+        Container(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(bottom: BorderSide(color: AppColors.borderStrong)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Scope Projects',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: widget.onRefresh,
+                    icon: const Icon(Icons.refresh_rounded),
+                    visualDensity: VisualDensity.compact,
+                    tooltip: 'Refresh',
+                  ),
+                  _UserMenuButton(compact: true),
+                ],
+              ),
+              TabBar(
+                controller: _tabController,
+                indicatorColor: AppColors.primary,
+                labelColor: AppColors.primary,
+                unselectedLabelColor: AppColors.bodyMuted,
+                labelStyle: theme.textTheme.labelMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
+                unselectedLabelStyle: theme.textTheme.labelMedium,
+                tabs: [
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.folder_rounded, size: 14),
+                        const SizedBox(width: 5),
+                        const Text('Projects'),
+                        const SizedBox(width: 5),
+                        _MobileCountBadge('${widget.projects.length}'),
+                      ],
+                    ),
+                  ),
+                  Tab(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.bookmark_rounded, size: 14),
+                        const SizedBox(width: 5),
+                        const Text('Templates'),
+                        const SizedBox(width: 5),
+                        widget.templatesLoading
+                            ? const SizedBox(
+                                width: 10,
+                                height: 10,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 1.5),
+                              )
+                            : _MobileCountBadge('$totalTemplates'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              // ── Projects tab ──────────────────────────────────────────
+              _MobileProjectsTab(
+                loading: widget.loading,
+                errorMessage: widget.errorMessage,
+                projects: widget.projects,
+                allProjects: widget.allProjects,
+                selectedProjectId: null,
+                searchController: widget.searchController,
+                onSearchChanged: widget.onSearchChanged,
+                onCreateProject: widget.onCreateProject,
+                onRefresh: widget.onRefresh,
+                onSelectProject: widget.onSelectProject,
+              ),
+              // ── Templates tab ─────────────────────────────────────────
+              _MobileTemplatesTab(
+                templates: widget.templates,
+                pdfTemplates: widget.pdfTemplates,
+                templatesLoading: widget.templatesLoading,
+                onOpenTemplate: widget.onOpenTemplate,
+                onDeleteTemplate: widget.onDeleteTemplate,
+                onEditPdfTemplate: widget.onEditPdfTemplate,
+                onDeletePdfTemplate: widget.onDeletePdfTemplate,
+                onCreateTemplate: widget.onCreateTemplate,
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Small count badge used in mobile tab labels.
+class _MobileCountBadge extends StatelessWidget {
+  const _MobileCountBadge(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: AppColors.surfaceRaised,
+        borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+        border: Border.all(color: AppColors.border),
+      ),
+      child: Text(text, style: theme.textTheme.labelSmall),
+    );
+  }
+}
+
+/// Mobile Templates tab content.
+class _MobileTemplatesTab extends StatelessWidget {
+  const _MobileTemplatesTab({
+    required this.templates,
+    required this.pdfTemplates,
+    required this.templatesLoading,
+    required this.onOpenTemplate,
+    required this.onDeleteTemplate,
+    required this.onEditPdfTemplate,
+    required this.onDeletePdfTemplate,
+    required this.onCreateTemplate,
+  });
+
+  final List<SowTemplateModel> templates;
+  final List<Map<String, dynamic>> pdfTemplates;
+  final bool templatesLoading;
+  final void Function(SowTemplateModel template) onOpenTemplate;
+  final void Function(String templateId) onDeleteTemplate;
+  final void Function(Map<String, dynamic> template) onEditPdfTemplate;
+  final void Function(String templateId) onDeletePdfTemplate;
+  final VoidCallback onCreateTemplate;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppSpacing.s4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: onCreateTemplate,
+              icon: const Icon(Icons.add_rounded),
+              label: const Text('New Template'),
+            ),
+          ),
+          const SizedBox(height: AppSpacing.s4),
+          if (templatesLoading)
+            const Center(child: CircularProgressIndicator())
+          else if (templates.isEmpty && pdfTemplates.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.s3),
+              child: Text(
+                'No templates yet. Tap "New Template" to create one, or save a PDF layout from the PDF editor.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.bodyMuted),
+              ),
+            )
+          else ...[
+            if (templates.isNotEmpty) ...[
+              Text('SOW Templates', style: theme.textTheme.titleSmall),
+              const SizedBox(height: AppSpacing.s3),
+              ...templates.map(
+                (t) => Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.s2),
+                  child: _TemplateTile(
+                    template: t,
+                    onOpen: () => onOpenTemplate(t),
+                    onDelete: () => onDeleteTemplate(t.id),
+                  ),
+                ),
+              ),
+            ],
+            if (pdfTemplates.isNotEmpty) ...[
+              if (templates.isNotEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: AppSpacing.s3),
+                  child: Divider(height: 1),
+                ),
+              Text('PDF Layout Templates', style: theme.textTheme.titleSmall),
+              const SizedBox(height: AppSpacing.s3),
+              ...pdfTemplates.map(
+                (t) => Padding(
+                  padding: const EdgeInsets.only(bottom: AppSpacing.s2),
+                  child: _PdfTemplateTile(
+                    template: t,
+                    onEdit: () => onEditPdfTemplate(t),
+                    onDelete: () =>
+                        onDeletePdfTemplate(t['id']?.toString() ?? ''),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ],
       ),
     );
   }
@@ -3154,8 +3552,8 @@ class _SidebarPanel extends StatefulWidget {
     required this.templatesLoading,
     required this.onOpenTemplate,
     required this.onDeleteTemplate,
-    required this.onUsePdfTemplate,
     required this.onDeletePdfTemplate,
+    required this.onEditPdfTemplate,
     required this.onCreateTemplate,
     this.embedded = false,
   });
@@ -3173,8 +3571,8 @@ class _SidebarPanel extends StatefulWidget {
   final bool templatesLoading;
   final void Function(SowTemplateModel template) onOpenTemplate;
   final void Function(String templateId) onDeleteTemplate;
-  final void Function(Map<String, dynamic> template) onUsePdfTemplate;
   final void Function(String templateId) onDeletePdfTemplate;
+  final void Function(Map<String, dynamic> template) onEditPdfTemplate;
   final VoidCallback onCreateTemplate;
   final bool embedded;
 
@@ -3445,7 +3843,7 @@ class _SidebarPanelState extends State<_SidebarPanel>
                                 bottom: AppSpacing.s2),
                             child: _PdfTemplateTile(
                               template: t,
-                              onUse: () => widget.onUsePdfTemplate(t),
+                              onEdit: () => widget.onEditPdfTemplate(t),
                               onDelete: () => widget.onDeletePdfTemplate(
                                   t['id']?.toString() ?? ''),
                             ),
@@ -3646,12 +4044,12 @@ class _TemplateTile extends StatelessWidget {
 class _PdfTemplateTile extends StatelessWidget {
   const _PdfTemplateTile({
     required this.template,
-    required this.onUse,
+    required this.onEdit,
     required this.onDelete,
   });
 
   final Map<String, dynamic> template;
-  final VoidCallback onUse;
+  final VoidCallback onEdit;
   final VoidCallback onDelete;
 
   @override
@@ -3697,8 +4095,8 @@ class _PdfTemplateTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             TextButton(
-              onPressed: onUse,
-              child: const Text('Use'),
+              onPressed: onEdit,
+              child: const Text('Edit'),
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, size: 18),
@@ -5816,6 +6214,17 @@ class _UserMenuButton extends StatelessWidget {
             ],
           ),
         ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<_UserMenuAction>(
+          value: _UserMenuAction.deleteAccount,
+          child: Row(
+            children: [
+              Icon(Icons.delete_forever_rounded, size: 18, color: AppColors.danger),
+              SizedBox(width: 8),
+              Text('Delete Account', style: TextStyle(color: AppColors.danger)),
+            ],
+          ),
+        ),
       ],
       child: Container(
         width: compact ? 36 : 40,
@@ -5852,6 +6261,8 @@ class _UserMenuButton extends StatelessWidget {
         context.pushNamed(AppRoute.billing.name);
       case _UserMenuAction.signOut:
         unawaited(_signOut(context));
+      case _UserMenuAction.deleteAccount:
+        context.pushNamed(AppRoute.deleteAccount.name);
     }
   }
 
@@ -5867,4 +6278,4 @@ class _UserMenuButton extends StatelessWidget {
   }
 }
 
-enum _UserMenuAction { inviteTeam, companySettings, teamSettings, sowSettings, activityLog, billing, signOut }
+enum _UserMenuAction { inviteTeam, companySettings, teamSettings, sowSettings, activityLog, billing, signOut, deleteAccount }

@@ -26,7 +26,7 @@ import 'repositories/template_repository.dart';
 import 'services/pdf_export_service.dart';
 import 'widgets/canvas/editor_canvas_widget.dart';
 import 'widgets/panels/left_panel_layers.dart';
-import 'widgets/panels/right_panel_properties.dart' show ElementTopBar;
+import 'widgets/panels/right_panel_properties.dart' show PropertiesTopBar;
 
 /// Embeddable PDF editor widget.
 ///
@@ -74,6 +74,11 @@ class PdfEditorWidget extends StatelessWidget {
   /// any visible templates list.
   final VoidCallback? onTemplateSaved;
 
+  /// When non-null, the editor starts in "edit existing template" mode:
+  /// the first "Save as Template" call will PUT to update this template
+  /// instead of POSTing a new one.
+  final String? initialTemplateId;
+
   const PdfEditorWidget({
     super.key,
     required this.initialData,
@@ -86,6 +91,7 @@ class PdfEditorWidget extends StatelessWidget {
     this.onSnapshot,
     this.tokenProvider,
     this.onTemplateSaved,
+    this.initialTemplateId,
   });
 
   /// Convenience constructor — parent software passes raw JSON directly.
@@ -151,6 +157,7 @@ class PdfEditorWidget extends StatelessWidget {
             frameUrls: frameUrls,
             tokenProvider: tokenProvider,
             onTemplateSaved: onTemplateSaved,
+            initialTemplateId: initialTemplateId,
           ),
         ),
       ),
@@ -175,6 +182,7 @@ class _EditorShell extends StatefulWidget {
   final List<String> frameUrls;
   final Future<String?> Function()? tokenProvider;
   final VoidCallback? onTemplateSaved;
+  final String? initialTemplateId;
 
   const _EditorShell({
     required this.initialData,
@@ -185,6 +193,7 @@ class _EditorShell extends StatefulWidget {
     this.frameUrls = const [],
     this.tokenProvider,
     this.onTemplateSaved,
+    this.initialTemplateId,
   });
 
   @override
@@ -194,9 +203,15 @@ class _EditorShell extends StatefulWidget {
 class _EditorShellState extends State<_EditorShell> {
   Timer? _snapshotDebounce;
 
+  /// Non-null when the canvas is bound to an existing template (edit mode).
+  /// Set from [widget.initialTemplateId] or after successfully creating a
+  /// new template, so subsequent saves call PUT instead of POST.
+  String? _currentTemplateId;
+
   @override
   void initState() {
     super.initState();
+    _currentTemplateId = widget.initialTemplateId;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final provider = context.read<TemplateEditorProvider>();
@@ -247,7 +262,9 @@ class _EditorShellState extends State<_EditorShell> {
       builder: (context, provider, _) {
         if (!provider.isLoaded) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            body: SafeArea(
+              child: Center(child: CircularProgressIndicator()),
+            ),
           );
         }
 
@@ -255,9 +272,10 @@ class _EditorShellState extends State<_EditorShell> {
           onSave: () {},
           child: Scaffold(
             backgroundColor: AppColors.pageBackground,
-            body: Column(
-              children: [
-                _EmbeddedToolbar(
+            body: SafeArea(
+              child: Column(
+                children: [
+                  _EmbeddedToolbar(
                   provider: provider,
                   onClose: widget.onClose,
                   onPreview: () => _openPreview(context, provider),
@@ -267,9 +285,7 @@ class _EditorShellState extends State<_EditorShell> {
                   onSaveAsTemplate: widget.tokenProvider != null
                       ? () => _saveAsTemplate(context, provider)
                       : null,
-                  onLoadTemplate: widget.tokenProvider != null
-                      ? () => _loadTemplate(context, provider)
-                      : null,
+                  isTemplateUpdateMode: _currentTemplateId != null,
                   onSave: widget.onSave != null
                       ? () {
                           final snap = _buildSnapshot(provider);
@@ -277,6 +293,7 @@ class _EditorShellState extends State<_EditorShell> {
                         }
                       : null,
                 ),
+                const PropertiesTopBar(),
                 Expanded(
                   child: _EditorBody(
                     provider: provider,
@@ -286,7 +303,8 @@ class _EditorShellState extends State<_EditorShell> {
               ],
             ),
           ),
-        );
+        ),
+      );
       },
     );
   }
@@ -322,176 +340,154 @@ class _EditorShellState extends State<_EditorShell> {
     await _runExport(context, provider, mode: _ExportMode.share);
   }
 
-  Future<void> _loadTemplate(
-      BuildContext context, TemplateEditorProvider provider) async {
-    try {
-      final token = await widget.tokenProvider?.call();
-      final uri =
-          Uri.parse(widget.apiBaseUrl).resolve('/api/pdf-templates');
-      final response = await http.get(
-        uri,
-        headers: {
-          'Content-Type': 'application/json',
-          if (token != null) 'Authorization': 'Bearer $token',
-        },
-      );
-      if (!context.mounted) return;
-      if (response.statusCode != 200) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to fetch templates'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final templates = (body['templates'] as List<dynamic>? ?? [])
-          .cast<Map<String, dynamic>>();
-      if (!context.mounted) return;
-      if (templates.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('No saved templates found'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-        return;
-      }
-      final selected = await showDialog<Map<String, dynamic>>(
-        context: context,
-        builder: (ctx) => _TemplatePickerDialog(templates: templates),
-      );
-      if (selected == null || !context.mounted) return;
-      final rawJson = selected['pdfJson'];
-      if (rawJson == null) return;
-      // Confirm replacement when the canvas already has content.
-      if (provider.elements.isNotEmpty) {
-        final confirmed = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('Replace current document?'),
-            content: const Text(
-                'Loading a template will replace the current canvas. '
-                'Any unsaved changes will be lost.'),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(ctx).pop(false),
-                child: const Text('Cancel'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(ctx).pop(true),
-                child: const Text('Load Template'),
-              ),
-            ],
-          ),
-        );
-        if (confirmed != true || !context.mounted) return;
-      }
-      final data = PdfDocumentData.fromJson(
-        rawJson is Map<String, dynamic>
-            ? rawJson
-            : Map<String, dynamic>.from(rawJson as Map),
-      );
-      provider.loadFromData(data);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content:
-                Text('Loaded: ${selected['name'] as String? ?? 'Untitled'}'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
-      }
-    } catch (e) {
-      if (!context.mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to load template: $e'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
-  }
-
-  Future<void> _saveAsTemplate(
-      BuildContext context, TemplateEditorProvider provider) async {
+  void _saveAsTemplate(
+      BuildContext context, TemplateEditorProvider provider) {
     final template = provider.template;
     if (template == null) return;
 
-    final nameController = TextEditingController(
-      text: template.name.isNotEmpty ? template.name : 'My PDF Template',
-    );
+    final isUpdate = _currentTemplateId != null;
 
-    final confirmed = await showDialog<bool>(
+    // When updating an existing template, skip the name dialog and PUT directly.
+    if (isUpdate) {
+      _doUpdateTemplate(context, provider, template);
+      return;
+    }
+
+    // New template — prompt for a name first.
+    final initialName =
+        template.name.isNotEmpty ? template.name : 'My PDF Template';
+    String enteredName = initialName;
+
+    Future<void> submit(BuildContext ctx) async {
+      final finalName =
+          enteredName.trim().isEmpty ? 'Untitled Template' : enteredName.trim();
+      if (template.name != finalName) provider.renameTemplate(finalName);
+      final snapshot =
+          template.copyWith(name: finalName, elements: provider.elements.toList());
+      final pdfJson = {
+        'name': finalName,
+        'pageSize': snapshot.pageSize.toJson(),
+        'elements': snapshot.elements.map((e) => e.toJson()).toList(),
+      };
+      Navigator.of(ctx).pop();
+      try {
+        final token = await widget.tokenProvider?.call();
+        final uri =
+            Uri.parse(widget.apiBaseUrl).resolve('/api/pdf-templates');
+        final response = await http.post(
+          uri,
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({'name': finalName, 'pdfJson': pdfJson}),
+        );
+        if (!context.mounted) return;
+        if (response.statusCode == 201) {
+          final respBody =
+              jsonDecode(response.body) as Map<String, dynamic>;
+          final newId = (respBody['template'] as Map<String, dynamic>?)
+              ?['id'] as String?;
+          if (newId != null) setState(() => _currentTemplateId = newId);
+          widget.onTemplateSaved?.call();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Template saved'),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        } else {
+          String msg = 'Save failed (HTTP ${response.statusCode})';
+          try {
+            final body = jsonDecode(response.body) as Map<String, dynamic>;
+            msg = body['message'] as String? ?? msg;
+          } catch (_) {}
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(msg),
+              backgroundColor: AppColors.danger,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+        }
+      } catch (e) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to save template: $e'),
+            backgroundColor: AppColors.danger,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    }
+
+    showDialog<void>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Save as Template'),
-        content: TextField(
-          controller: nameController,
+        content: TextFormField(
+          initialValue: initialName,
           autofocus: true,
           decoration: const InputDecoration(
             labelText: 'Template name',
             border: OutlineInputBorder(),
           ),
-          onSubmitted: (_) => Navigator.of(ctx).pop(true),
+          onChanged: (v) => enteredName = v,
+          onFieldSubmitted: (_) => submit(ctx),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
+            onPressed: () => Navigator.of(ctx).pop(),
             child: const Text('Cancel'),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
+            onPressed: () => submit(ctx),
             child: const Text('Save'),
           ),
         ],
       ),
     );
+  }
 
-    final entered = nameController.text.trim();
-    nameController.dispose();
-    if (confirmed != true || !context.mounted) return;
-
-    final finalName = entered.isEmpty ? 'Untitled Template' : entered;
-    // Keep the in-memory template in sync so subsequent saves / exports use
-    // the new name.
-    if (template.name != finalName) {
-      provider.renameTemplate(finalName);
-    }
-    final snapshot = template.copyWith(
-      name: finalName,
-      elements: provider.elements.toList(),
-    );
+  Future<void> _doUpdateTemplate(
+      BuildContext context, TemplateEditorProvider provider, dynamic template) async {
+    final templateId = _currentTemplateId;
+    if (templateId == null) return;
+    final snapshot =
+        template.copyWith(name: template.name, elements: provider.elements.toList());
     final pdfJson = {
-      'name': finalName,
+      'name': snapshot.name,
       'pageSize': snapshot.pageSize.toJson(),
       'elements': snapshot.elements.map((e) => e.toJson()).toList(),
     };
-
     try {
       final token = await widget.tokenProvider?.call();
-      final uri = Uri.parse(widget.apiBaseUrl).resolve('/api/pdf-templates');
-      final response = await http.post(
+      final uri = Uri.parse(widget.apiBaseUrl)
+          .resolve('/api/pdf-templates/$templateId');
+      final response = await http.put(
         uri,
         headers: {
           'Content-Type': 'application/json',
           if (token != null) 'Authorization': 'Bearer $token',
         },
-        body: jsonEncode({'name': finalName, 'pdfJson': pdfJson}),
+        body: jsonEncode({'name': snapshot.name, 'pdfJson': pdfJson}),
       );
       if (!context.mounted) return;
-      if (response.statusCode == 201) {
+      if (response.statusCode == 200) {
         widget.onTemplateSaved?.call();
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Template saved successfully'),
+            content: Text('Template updated'),
             behavior: SnackBarBehavior.floating,
           ),
         );
       } else {
-        final body = jsonDecode(response.body) as Map<String, dynamic>;
-        final msg = body['message'] as String? ?? 'Save failed';
+        String msg = 'Update failed (HTTP ${response.statusCode})';
+        try {
+          final body = jsonDecode(response.body) as Map<String, dynamic>;
+          msg = body['message'] as String? ?? msg;
+        } catch (_) {}
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
@@ -504,7 +500,7 @@ class _EditorShellState extends State<_EditorShell> {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed to save template: $e'),
+          content: Text('Failed to update template: $e'),
           backgroundColor: AppColors.danger,
           behavior: SnackBarBehavior.floating,
         ),
@@ -565,7 +561,7 @@ class _EditorShellState extends State<_EditorShell> {
 
 enum _ExportMode { download, print, share }
 
-enum _ToolbarMenuAction { share, download, print, saveTemplate, loadTemplate }
+enum _ToolbarMenuAction { share, download, print, saveTemplate }
 
 // ── Toolbar ───────────────────────────────────────────────────────────────────
 
@@ -577,7 +573,7 @@ class _EmbeddedToolbar extends StatelessWidget {
   final VoidCallback onPrint;
   final VoidCallback onShare;
   final VoidCallback? onSaveAsTemplate;
-  final VoidCallback? onLoadTemplate;
+  final bool isTemplateUpdateMode;
   final VoidCallback? onSave;
 
   const _EmbeddedToolbar({
@@ -588,7 +584,7 @@ class _EmbeddedToolbar extends StatelessWidget {
     required this.onPrint,
     required this.onShare,
     this.onSaveAsTemplate,
-    this.onLoadTemplate,
+    this.isTemplateUpdateMode = false,
     this.onSave,
   });
 
@@ -673,42 +669,23 @@ class _EmbeddedToolbar extends StatelessWidget {
               tooltip: 'Insert Table',
               onTap: () => provider.addElement(TableElement.defaults()),
             ),
+            _IconBtn(
+              icon: Icons.crop_square_outlined,
+              tooltip: 'Insert Shape',
+              onTap: () => provider.addElement(ShapeElement.defaults()),
+            ),
+            _IconBtn(
+              icon: Icons.web_asset_outlined,
+              tooltip: 'Insert Container',
+              onTap: () => provider.addElement(ContainerElement.defaults()),
+            ),
           ]),
 
           const Spacer(),
 
-          // Element properties (shown inline when an element is selected).
-          // Wrapped in Expanded + horizontal scroll so the toolbar never
-          // overflows when many controls are visible on narrow widths.
-          Expanded(
-            flex: 4,
-            child: Consumer<TemplateEditorProvider>(
-              builder: (ctx, prov, _) {
-                final el = prov.primarySelected;
-                if (el == null) return const SizedBox.shrink();
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const SizedBox(width: AppSpacing.s2),
-                    Container(width: 1, height: 24, color: AppColors.border),
-                    const SizedBox(width: AppSpacing.s2),
-                    Flexible(
-                      child: SizedBox(
-                        height: 48,
-                        child: ElementTopBar(element: el, provider: prov),
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
-
-          const Spacer(),
-
-          // Export group
-          _ToolGroup(children: [
-            if (canExport) ...[
+          // Export group — share / download / print
+          if (canExport)
+            _ToolGroup(children: [
               _IconBtn(
                 icon: Icons.share_outlined,
                 tooltip: 'Share PDF',
@@ -724,50 +701,47 @@ class _EmbeddedToolbar extends StatelessWidget {
                 tooltip: 'Print PDF',
                 onTap: onPrint,
               ),
-            ],
-            if (canEdit && onLoadTemplate != null)
-              _IconBtn(
-                icon: Icons.folder_open_outlined,
-                tooltip: 'Load Template',
-                onTap: onLoadTemplate,
-              ),
-            if (canEdit && onSaveAsTemplate != null)
-              _IconBtn(
-                icon: Icons.bookmark_add_outlined,
-                tooltip: 'Save as Template',
-                onTap: onSaveAsTemplate,
-              ),
-          ]),
+            ]),
 
-          const SizedBox(width: AppSpacing.s3),
+// Templates button — save / update template (independent of project)
+          if (canEdit && onSaveAsTemplate != null) ...[            
 
-          // Save — persists PDF to the parent (SOW document)
-          if (canEdit && onSave != null) ...
-            [
-              SizedBox(
-                height: 36,
-                child: FilledButton.icon(
-                  onPressed: onSave,
-                  icon: const Icon(Icons.save_outlined, size: 16),
-                  label: const Text('Save'),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.success,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: AppSpacing.s4),
-                    textStyle: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(AppSpacing.radiusSm),
-                    ),
+            const SizedBox(width: AppSpacing.s2),
+            _TemplatesSaveButton(
+                onSave: onSaveAsTemplate,
+                isUpdate: isTemplateUpdateMode),
+          ],
+
+          const SizedBox(width: AppSpacing.s2),
+
+          // Save — persists PDF document to the active project.
+          // Only shown when a project is open (onSave != null).
+          if (canEdit && onSave != null) ...[
+
+            SizedBox(
+              height: 36,
+              child: FilledButton.icon(
+                onPressed: onSave,
+                icon: const Icon(Icons.save_outlined, size: 16),
+                label: const Text('Save'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.s4),
+                  textStyle: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius.circular(AppSpacing.radiusSm),
                   ),
                 ),
               ),
-              const SizedBox(width: AppSpacing.s2),
-            ],
+            ),
+            const SizedBox(width: AppSpacing.s2),
+          ],
 
           // Preview — primary action
           SizedBox(
@@ -866,8 +840,6 @@ class _EmbeddedToolbar extends StatelessWidget {
                   onDownload();
                 case _ToolbarMenuAction.print:
                   onPrint();
-                case _ToolbarMenuAction.loadTemplate:
-                  onLoadTemplate?.call();
                 case _ToolbarMenuAction.saveTemplate:
                   onSaveAsTemplate?.call();
               }
@@ -902,23 +874,15 @@ class _EmbeddedToolbar extends StatelessWidget {
                   ),
                 ),
               ],
-              if (canEdit && onLoadTemplate != null)
-                const PopupMenuItem(
-                  value: _ToolbarMenuAction.loadTemplate,
-                  child: ListTile(
-                    dense: true,
-                    leading: Icon(Icons.folder_open_outlined),
-                    title: Text('Load Template'),
-                    contentPadding: EdgeInsets.zero,
-                  ),
-                ),
               if (canEdit && onSaveAsTemplate != null)
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: _ToolbarMenuAction.saveTemplate,
                   child: ListTile(
                     dense: true,
-                    leading: Icon(Icons.bookmark_add_outlined),
-                    title: Text('Save as Template'),
+                    leading: const Icon(Icons.bookmark_add_outlined),
+                    title: Text(isTemplateUpdateMode
+                        ? 'Update Template'
+                        : 'Save as Template'),
                     contentPadding: EdgeInsets.zero,
                   ),
                 ),
@@ -950,6 +914,33 @@ class _ToolGroup extends StatelessWidget {
           children: children,
         ),
       );
+}
+
+// ── Templates dropdown button ─────────────────────────────────────────────────
+
+class _TemplatesSaveButton extends StatelessWidget {
+  final VoidCallback? onSave;
+  final bool isUpdate;
+
+  const _TemplatesSaveButton({this.onSave, this.isUpdate = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 36,
+      child: OutlinedButton.icon(
+        onPressed: onSave,
+        icon: Icon(
+          isUpdate ? Icons.bookmark_added_outlined : Icons.bookmark_add_outlined,
+          size: 15,
+        ),
+        label: Text(
+          isUpdate ? 'Update Template' : 'Save as Template',
+          style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500),
+        ),
+      ),
+    );
+  }
 }
 
 class _UndoRedoButtons extends StatelessWidget {
@@ -1346,40 +1337,71 @@ class _NoOpRepository implements TemplateRepository {
 
 // ── Template picker dialog ────────────────────────────────────────────────────
 
-class _TemplatePickerDialog extends StatelessWidget {
+class _TemplatePickerDialog extends StatefulWidget {
   final List<Map<String, dynamic>> templates;
 
-  const _TemplatePickerDialog({required this.templates});
+  const _TemplatePickerDialog({
+    required this.templates,
+  });
+
+  @override
+  State<_TemplatePickerDialog> createState() => _TemplatePickerDialogState();
+}
+
+class _TemplatePickerDialogState extends State<_TemplatePickerDialog> {
+  late List<Map<String, dynamic>> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = List.from(widget.templates);
+  }
 
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Load Template'),
+      title: const Text('PDF Templates'),
       contentPadding: const EdgeInsets.symmetric(vertical: 8),
       content: SizedBox(
-        width: 340,
-        child: ListView.separated(
-          shrinkWrap: true,
-          itemCount: templates.length,
-          separatorBuilder: (_, __) =>
-              const Divider(height: 1, indent: 16, endIndent: 16),
-          itemBuilder: (ctx, i) {
-            final t = templates[i];
-            final name = t['name'] as String? ?? 'Untitled';
-            return ListTile(
-              leading:
-                  const Icon(Icons.article_outlined, color: AppColors.primary),
-              title: Text(name,
-                  style: const TextStyle(fontWeight: FontWeight.w600)),
-              onTap: () => Navigator.of(ctx).pop(t),
-            );
-          },
-        ),
+        width: 380,
+        child: _items.isEmpty
+            ? const Padding(
+                padding:
+                    EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                child: Text(
+                  'No saved templates yet.',
+                  style: TextStyle(color: AppColors.bodyMuted),
+                ),
+              )
+            : ListView.separated(
+                shrinkWrap: true,
+                itemCount: _items.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(height: 1, indent: 16, endIndent: 16),
+                itemBuilder: (ctx, i) {
+                  final t = _items[i];
+                  final name = t['name'] as String? ?? 'Untitled';
+                  return ListTile(
+                    leading: const Icon(
+                        Icons.article_outlined,
+                        color: AppColors.primary),
+                    title: Text(name,
+                        style: const TextStyle(
+                            fontWeight: FontWeight.w600)),
+                    subtitle: const Text(
+                      'Tap to load into editor',
+                      style: TextStyle(fontSize: 11),
+                    ),
+                    trailing: null,
+                    onTap: () => Navigator.of(ctx).pop(t),
+                  );
+                },
+              ),
       ),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(null),
-          child: const Text('Cancel'),
+          child: const Text('Close'),
         ),
       ],
     );

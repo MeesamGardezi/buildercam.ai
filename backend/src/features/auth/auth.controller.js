@@ -110,6 +110,19 @@ class AuthController {
     }
   }
 
+  async deleteAccount(req, res) {
+    try {
+      await authService.deleteOwnAccount(
+        req.user.uid,
+        req.user.companyId || null,
+        req.user.role || 'member',
+      );
+      return res.json({ success: true });
+    } catch (error) {
+      return this._handleError(req, res, error, 'deleteAccount');
+    }
+  }
+
   _handleError(req, res, error, action) {
     console.error(
       `[${req.requestId || 'no-request-id'}] ${action} failed: ${error.message || 'Unknown error'}`,

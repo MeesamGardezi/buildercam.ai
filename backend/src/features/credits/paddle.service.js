@@ -45,25 +45,25 @@ export const CREDIT_PACKS = [
 
 /**
  * Monthly subscription plans.
- * Starter $200/mo → 300 credits ($0.67/credit).
- * Pro     $400/mo → 700 credits ($0.57/credit).
+ * Starter $100/mo → 300 credits ($0.33/credit).
+ * Pro     $200/mo → 700 credits ($0.29/credit).
  */
 export const SUBSCRIPTION_PLANS = [
   {
     id: 'plan_starter',
     priceId: process.env.PADDLE_PRICE_STARTER_MONTHLY ?? '',
     credits: 300,
-    priceUsd: 20000,
+    priceUsd: 10000,
     label: 'Starter',
-    description: '$200 / month — 300 credits ($0.67 each)',
+    description: '$100 / month — 300 credits ($0.33 each)',
   },
   {
     id: 'plan_pro',
     priceId: process.env.PADDLE_PRICE_PRO_MONTHLY ?? '',
     credits: 700,
-    priceUsd: 40000,
+    priceUsd: 20000,
     label: 'Pro',
-    description: '$400 / month — 700 credits ($0.57 each)',
+    description: '$200 / month — 700 credits ($0.29 each)',
   },
 ];
 

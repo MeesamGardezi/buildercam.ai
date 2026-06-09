@@ -57,13 +57,14 @@ class _SetupCompanyScreenState extends State<SetupCompanyScreen> {
 
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.s6),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(AppSpacing.s6),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Container(
                   width: 56,
@@ -140,6 +141,7 @@ class _SetupCompanyScreenState extends State<SetupCompanyScreen> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 }

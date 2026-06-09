@@ -6,7 +6,9 @@ enum ElementType {
   table,
   logo,
   signatureBlock,
-  divider;
+  divider,
+  shape,
+  container;
 
   String get label => switch (this) {
         ElementType.text => 'Text',
@@ -15,6 +17,8 @@ enum ElementType {
         ElementType.logo => 'Logo',
         ElementType.signatureBlock => 'Signature Block',
         ElementType.divider => 'Divider',
+        ElementType.shape => 'Shape',
+        ElementType.container => 'Container',
       };
 
   IconData get icon => switch (this) {
@@ -24,6 +28,8 @@ enum ElementType {
         ElementType.logo => Icons.business_outlined,
         ElementType.signatureBlock => Icons.draw_outlined,
         ElementType.divider => Icons.horizontal_rule,
+        ElementType.shape => Icons.crop_square_outlined,
+        ElementType.container => Icons.web_asset_outlined,
       };
 
   String get jsonKey => switch (this) {
@@ -33,6 +39,8 @@ enum ElementType {
         ElementType.logo => 'logo',
         ElementType.signatureBlock => 'signature_block',
         ElementType.divider => 'divider',
+        ElementType.shape => 'shape',
+        ElementType.container => 'container',
       };
 
   static ElementType fromJson(String value) => switch (value) {
@@ -42,6 +50,8 @@ enum ElementType {
         'logo' => ElementType.logo,
         'signature_block' => ElementType.signatureBlock,
         'divider' => ElementType.divider,
+        'shape' => ElementType.shape,
+        'container' => ElementType.container,
         _ => throw ArgumentError('Unknown element type: $value'),
       };
 }

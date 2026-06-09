@@ -10,7 +10,7 @@ export function validateElement(el) {
     }
   }
 
-  const validTypes = ['text', 'image', 'table', 'logo', 'signature_block', 'divider'];
+  const validTypes = ['text', 'image', 'table', 'logo', 'signature_block', 'divider', 'shape', 'container'];
   if (!validTypes.includes(el.type)) {
     throw new Error(`Unknown element type: ${el.type}`);
   }
@@ -38,6 +38,11 @@ export function validateElement(el) {
     ...(el.thickness !== undefined && { thickness: Number(el.thickness) }),
     ...(el.color !== undefined && { color: Number(el.color) }),
     ...(el.dashStyle !== undefined && { dashStyle: el.dashStyle }),
+    // shape / container
+    ...(el.shapeKind !== undefined && { shapeKind: String(el.shapeKind) }),
+    ...(el.fillColor !== undefined && { fillColor: Number(el.fillColor) }),
+    ...(el.borderColor !== undefined && { borderColor: Number(el.borderColor) }),
+    ...(el.borderWidth !== undefined && { borderWidth: Number(el.borderWidth) }),
   };
 }
 

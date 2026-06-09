@@ -1,4 +1,4 @@
-package com.example.app
+package ai.buildercam
 
 import io.flutter.embedding.android.FlutterActivity
 

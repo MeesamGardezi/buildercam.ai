@@ -178,6 +178,15 @@ class AuthController extends ChangeNotifier {
     }
   }
 
+  Future<void> deleteAccount() async {
+    _clearError();
+    final token = await getIdToken();
+    if (token == null) throw StateError('Not authenticated.');
+    await _authService.deleteAccount(token);
+    // Sign out locally after the backend deletes the account.
+    await signOut();
+  }
+
   Future<void> signOut() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_guestKey);

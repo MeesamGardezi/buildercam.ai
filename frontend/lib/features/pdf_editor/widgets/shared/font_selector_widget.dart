@@ -28,6 +28,7 @@ class FontSelectorWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) => DropdownButtonFormField<String>(
         value: _fonts.contains(value) ? value : _fonts.first,
+        isExpanded: true,
         decoration: const InputDecoration(
           labelText: 'Font',
           isDense: true,

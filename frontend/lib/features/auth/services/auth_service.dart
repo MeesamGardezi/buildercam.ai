@@ -147,6 +147,14 @@ class AuthService {
 
   // ── Company settings ───────────────────────────────────────────────────────
 
+  Future<void> deleteAccount(String idToken) async {
+    final response = await _client.delete(
+      _baseUri.resolve('/api/auth/account'),
+      headers: _headers(idToken),
+    );
+    _assertSuccess(response, 'deleteAccount');
+  }
+
   Future<CompanySettings> fetchCompanySettings(String idToken) async {
     final response = await _client.get(
       _baseUri.resolve('/api/auth/company-settings'),

@@ -46,6 +46,11 @@ router.delete('/team-members/:uid', verifyFirebaseToken, requireCompany, require
   authController.removeTeamMember(req, res),
 );
 
+// Delete the caller's own account (and company + team data if owner).
+router.delete('/account', verifyFirebaseToken, (req, res) =>
+  authController.deleteAccount(req, res),
+);
+
 // Company-wide AI settings: categories and notes used during SOW/PDF generation.
 router.get('/company-settings', verifyFirebaseToken, requireCompany, (req, res) =>
   authController.getCompanySettings(req, res),

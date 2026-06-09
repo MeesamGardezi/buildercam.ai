@@ -223,6 +223,12 @@ export async function generatePdf(elements, pageSize) {
       case 'divider':
         drawDivider(page, el, y);
         break;
+      case 'shape':
+        drawShape(page, el, y);
+        break;
+      case 'container':
+        drawContainer(page, el, y);
+        break;
     }
 
     if (rotated) {
@@ -494,4 +500,56 @@ function drawDivider(page, el, y) {
       thickness, color,
     });
   }
+}
+
+function drawShape(page, el, y) {
+  const fillColor = el.fillColor != null ? argbToRgb(el.fillColor) : rgb(0.86, 0.92, 0.99);
+  const borderColor = el.borderColor != null ? argbToRgb(el.borderColor) : rgb(0.23, 0.51, 0.96);
+  const borderWidth = el.borderWidth ?? 2;
+  const opacity = el.opacity ?? 1;
+  const kind = el.shapeKind ?? 'rectangle';
+
+  if (kind === 'ellipse') {
+    page.drawEllipse({
+      x: el.x + el.width / 2,
+      y: y + el.height / 2,
+      xScale: el.width / 2,
+      yScale: el.height / 2,
+      color: fillColor,
+      borderColor,
+      borderWidth,
+      opacity,
+    });
+  } else {
+    // rectangle and triangle both fall back to a rectangle in pdf-lib
+    // (pdf-lib has no built-in triangle primitive).
+    page.drawRectangle({
+      x: el.x,
+      y,
+      width: el.width,
+      height: el.height,
+      color: fillColor,
+      borderColor,
+      borderWidth,
+      opacity,
+    });
+  }
+}
+
+function drawContainer(page, el, y) {
+  const fillColor = el.fillColor != null ? argbToRgb(el.fillColor) : null;
+  const borderColor = el.borderColor != null ? argbToRgb(el.borderColor) : rgb(0.58, 0.64, 0.72);
+  const borderWidth = el.borderWidth ?? 1;
+  const opacity = el.opacity ?? 1;
+
+  page.drawRectangle({
+    x: el.x,
+    y,
+    width: el.width,
+    height: el.height,
+    ...(fillColor ? { color: fillColor } : {}),
+    borderColor,
+    borderWidth,
+    opacity,
+  });
 }

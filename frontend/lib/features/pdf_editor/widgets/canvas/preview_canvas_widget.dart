@@ -6,6 +6,8 @@ import '../../models/template_model.dart';
 import '../elements/divider_element_widget.dart';
 import '../elements/image_element_widget.dart';
 import '../elements/logo_element_widget.dart';
+import '../elements/shape_element_widget.dart';
+import '../elements/container_element_widget.dart';
 import '../elements/table_element_widget.dart';
 import '../elements/text_element_widget.dart';
 import '../elements/signature_block_widget.dart';
@@ -140,5 +142,7 @@ class _PreviewElement extends StatelessWidget {
             onChanged: (_) {},
           ),
         DividerElement de => DividerElementWidget(element: de),
+        ShapeElement se => ShapeElementWidget(element: se),
+        ContainerElement ce => ContainerElementWidget(element: ce),
       };
 }

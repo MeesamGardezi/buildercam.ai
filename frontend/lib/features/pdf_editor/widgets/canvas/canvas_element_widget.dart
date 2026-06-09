@@ -12,6 +12,8 @@ import '../../providers/template_editor_provider.dart';
 import '../elements/divider_element_widget.dart';
 import '../elements/image_element_widget.dart';
 import '../elements/logo_element_widget.dart';
+import '../elements/shape_element_widget.dart';
+import '../elements/container_element_widget.dart';
 import '../elements/signature_block_widget.dart';
 import '../elements/table_element_widget.dart';
 import '../elements/text_element_widget.dart';
@@ -38,6 +40,9 @@ enum _ContextAction { copy, cut, paste, duplicate, bringForward, sendBack, rotat
 class _CanvasElementWidgetState extends State<CanvasElementWidget> {
   double _startX = 0, _startY = 0;
   bool _isDragging = false;
+  // ID of the element actually being dragged — may differ from widget.element.id
+  // when the user starts a drag on this element but another element is selected.
+  String? _dragTargetId;
   Offset? _pointerDown;
   int? _activePointer;
   Offset _secondaryTapPosition = Offset.zero;
@@ -53,7 +58,9 @@ class _CanvasElementWidgetState extends State<CanvasElementWidget> {
     // Use ValueListenableBuilder for the drag position so only this widget
     // rebuilds during drag, not the entire canvas consumer.
     final dragNotifier = _provider.dragPositionFor(el.id);
-    final isDragging = _isDragging || dragNotifier != null;
+    // Only show drag visuals on this element if it is the actual drag target.
+    final isActualTarget = _dragTargetId == null || _dragTargetId == el.id;
+    final isDragging = (isActualTarget && _isDragging) || dragNotifier != null;
 
     return ValueListenableBuilder<Offset>(
       valueListenable: dragNotifier ?? ValueNotifier(Offset(el.x, el.y)),
@@ -107,7 +114,7 @@ class _CanvasElementWidgetState extends State<CanvasElementWidget> {
             Positioned.fill(child: content),
             Positioned.fill(
               child: Listener(
-                behavior: HitTestBehavior.translucent,
+                behavior: HitTestBehavior.opaque,
                 onPointerDown: (event) => _onPointerDown(event, el),
                 onPointerMove: (event) => _onPointerMove(event, el),
                 onPointerUp: (event) => _onPointerUp(event, el),
@@ -171,6 +178,8 @@ class _CanvasElementWidgetState extends State<CanvasElementWidget> {
           onEndEdit: _provider.endInlineEdit,
         ),
       DividerElement de => DividerElementWidget(element: de),
+      ShapeElement se => ShapeElementWidget(element: se),
+      ContainerElement ce => ContainerElementWidget(element: ce),
     };
     final clipped = ClipRect(child: inner);
     if (el.rotation % 360 == 0) return clipped;
@@ -253,6 +262,7 @@ class _CanvasElementWidgetState extends State<CanvasElementWidget> {
     if (el.locked || _provider.editingTextId == el.id) return;
     _activePointer = event.pointer;
     _pointerDown = event.position;
+    _dragTargetId = el.id;
     _startX = el.x;
     _startY = el.y;
   }
@@ -264,17 +274,19 @@ class _CanvasElementWidgetState extends State<CanvasElementWidget> {
     final delta = event.position - _pointerDown!;
     if (!_isDragging && delta.distance < 4.0) return;
 
+    final dragId = _dragTargetId ?? el.id;
+
     if (!_isDragging) {
-      if (!_provider.isSelected(el.id)) {
-        _provider.selectElement(el.id);
+      if (!_provider.isSelected(dragId)) {
+        _provider.selectElement(dragId);
       }
-      _provider.beginDrag(el.id);
+      _provider.beginDrag(dragId);
       if (mounted) setState(() => _isDragging = true);
     }
 
     final scale = widget.transformController.value.getMaxScaleOnAxis();
     _provider.updateDrag(
-      el.id,
+      dragId,
       _startX + delta.dx / scale,
       _startY + delta.dy / scale,
     );
@@ -293,8 +305,10 @@ class _CanvasElementWidgetState extends State<CanvasElementWidget> {
   void _finishDrag(TemplateElement el) {
     _pointerDown = null;
     _activePointer = null;
+    final dragId = _dragTargetId ?? el.id;
+    _dragTargetId = null;
     if (_isDragging) {
-      _provider.endDrag(el.id);
+      _provider.endDrag(dragId);
     }
     if (!mounted) return;
     setState(() => _isDragging = false);

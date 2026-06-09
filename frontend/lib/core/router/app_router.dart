@@ -19,6 +19,7 @@
 
 import 'package:buildercam/core/core.dart';
 import 'package:buildercam/features/auth/auth_module.dart';
+import 'package:buildercam/features/auth/views/screens/delete_account_screen.dart';
 import 'package:buildercam/features/auth/views/screens/legal_screen.dart';
 import 'package:buildercam/features/credits/credits_module.dart';
 import 'package:buildercam/features/pdf_editor/models/pdf_document_data.dart';
@@ -63,6 +64,7 @@ enum AppRoute {
   billing('/billing', 'billing'),
   privacy('/privacy', 'privacy'),
   terms('/terms', 'terms'),
+  deleteAccount('/account/delete', 'delete-account'),
   // ── Standalone template viewer (no shell) ─────────────────────────────────
   sowTemplate('/sow/template', 'sow-template');
 
@@ -148,9 +150,13 @@ GoRouter buildAppRouter(AuthController auth) {
       GoRoute(
         path: AppRoute.home.path,
         name: AppRoute.home.name,
-        pageBuilder: (_, __) => MaterialPage(
+        pageBuilder: (_, state) => MaterialPage(
           key: _kSowHomeKey,
-          child: SowHomeScreen(tokenProvider: auth.getIdToken),
+          child: SowHomeScreen(
+            tokenProvider: auth.getIdToken,
+            initialEditingTemplateId:
+                state.uri.queryParameters['editTemplate'],
+          ),
         ),
       ),
       GoRoute(
@@ -162,6 +168,8 @@ GoRouter buildAppRouter(AuthController auth) {
             tokenProvider: auth.getIdToken,
             initialProjectId: state.pathParameters['projectId'],
             initialTab: state.uri.queryParameters['tab'],
+            initialEditingTemplateId:
+                state.uri.queryParameters['editTemplate'],
           ),
         ),
       ),
@@ -338,6 +346,11 @@ GoRouter buildAppRouter(AuthController auth) {
         name: AppRoute.terms.name,
         builder: (_, __) => const LegalScreen(document: LegalDocument.terms),
       ),
+      GoRoute(
+        path: AppRoute.deleteAccount.path,
+        name: AppRoute.deleteAccount.name,
+        builder: (_, __) => const DeleteAccountScreen(),
+      ),
     ],  
   );
 }
@@ -434,7 +447,8 @@ bool _isValidDeepLink(String path, bool isGuest, bool isOwner) {
       path.startsWith('/team') ||
       path.startsWith('/template') ||
       path == AppRoute.activityLog.path ||
-      path == AppRoute.billing.path;
+      path == AppRoute.billing.path ||
+      path == AppRoute.deleteAccount.path;
 }
 
 // ── Typed argument bundles ────────────────────────────────────────────────────

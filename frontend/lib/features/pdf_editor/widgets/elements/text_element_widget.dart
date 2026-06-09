@@ -127,15 +127,28 @@ class _TextElementWidgetState extends State<TextElementWidget> {
     );
   }
 
-  TextStyle _buildStyle(TextElement el) => TextStyle(
-        fontFamily: el.fontFamily,
-        fontSize: el.fontSize,
-        fontWeight: el.fontWeight,
-        fontStyle: el.fontStyle,
-        color: el.color,
-        height: el.lineHeight,
-        letterSpacing: el.letterSpacing,
-      );
+  TextStyle _buildStyle(TextElement el) {
+    TextDecoration? decoration;
+    if (el.underline && el.strikethrough) {
+      decoration = TextDecoration.combine(
+          [TextDecoration.underline, TextDecoration.lineThrough]);
+    } else if (el.underline) {
+      decoration = TextDecoration.underline;
+    } else if (el.strikethrough) {
+      decoration = TextDecoration.lineThrough;
+    }
+    return TextStyle(
+      fontFamily: el.fontFamily,
+      fontSize: el.fontSize,
+      fontWeight: el.fontWeight,
+      fontStyle: el.fontStyle,
+      color: el.color,
+      height: el.lineHeight,
+      letterSpacing: el.letterSpacing,
+      decoration: decoration,
+      decorationColor: el.color,
+    );
+  }
 
   Alignment _alignmentFor(TextAlign align) => switch (align) {
         TextAlign.left || TextAlign.start => Alignment.centerLeft,

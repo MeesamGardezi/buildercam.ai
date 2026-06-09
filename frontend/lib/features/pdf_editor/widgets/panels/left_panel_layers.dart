@@ -370,6 +370,8 @@ class _LayerRowState extends State<_LayerRow> {
         LogoElement _ => 'Logo',
         SignatureBlockElement _ => 'Signature Block',
         DividerElement _ => 'Divider',
+        ShapeElement se => '${se.shapeKind.name[0].toUpperCase()}${se.shapeKind.name.substring(1)}',
+        ContainerElement _ => 'Container',
       };
 }
 
@@ -580,6 +582,8 @@ class _AddElementMenuButton extends StatelessWidget {
       (LogoElement.defaults, 'Logo', Icons.business_outlined),
       (SignatureBlockElement.defaults, 'Signature Block', Icons.draw_outlined),
       (DividerElement.defaults, 'Divider', Icons.horizontal_rule),
+      (ShapeElement.defaults, 'Shape', Icons.crop_square_outlined),
+      (ContainerElement.defaults, 'Container', Icons.web_asset_outlined),
     ];
 
     return MenuAnchor(

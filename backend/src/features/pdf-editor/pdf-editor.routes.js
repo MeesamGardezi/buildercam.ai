@@ -12,6 +12,7 @@ import {
   savePdfTemplate,
   listPdfTemplates,
   deletePdfTemplate,
+  updatePdfTemplate,
 } from '../../services/firestore.service.js';
 
 const router = Router();
@@ -88,6 +89,20 @@ router.delete('/pdf-templates/:id', verifyFirebaseToken, async (req, res) => {
     return res.json({ success: true });
   } catch (err) {
     return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// PUT /api/pdf-templates/:id — update name and/or content of a saved PDF template
+// Body: { name?: string, pdfJson?: object }
+router.put('/pdf-templates/:id', verifyFirebaseToken, async (req, res) => {
+  try {
+    const companyId = req.user.companyId || req.user.uid;
+    const { name, pdfJson } = req.body;
+    const template = await updatePdfTemplate(req.params.id, companyId, { name, pdfJson });
+    return res.json({ success: true, template });
+  } catch (err) {
+    const status = err.message === 'Template not found' ? 404 : 500;
+    return res.status(status).json({ success: false, message: err.message });
   }
 });
 

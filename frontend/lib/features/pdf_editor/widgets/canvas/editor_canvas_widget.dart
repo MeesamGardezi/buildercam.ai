@@ -216,7 +216,8 @@ class _EditorCanvasWidgetState extends State<EditorCanvasWidget> {
         onPanUpdate:
             isPanMode ? null : (d) => _onRubberUpdate(d.localPosition),
         onPanEnd: isPanMode ? null : (_) => _onRubberEnd(provider),
-        child: Stack(
+        child: SelectionContainer.disabled(
+          child: Stack(
           clipBehavior: Clip.hardEdge,
           children: [
             ...provider.sortedElements.map(
@@ -242,6 +243,7 @@ class _EditorCanvasWidgetState extends State<EditorCanvasWidget> {
                 height: _rubberH,
               ),
           ],
+        ),
         ),
       ),
     );

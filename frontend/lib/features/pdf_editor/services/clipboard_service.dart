@@ -88,5 +88,7 @@ class ClipboardService {
         LogoElement logo => logo.copyWith(x: x, y: y),
         SignatureBlockElement signature => signature.copyWith(x: x, y: y),
         DividerElement divider => divider.copyWith(x: x, y: y),
+        ShapeElement shape => shape.copyWith(x: x, y: y),
+        ContainerElement container => container.copyWith(x: x, y: y),
       };
 }

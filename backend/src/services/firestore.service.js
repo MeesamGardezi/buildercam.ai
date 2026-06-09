@@ -304,6 +304,22 @@ export async function deletePdfTemplate(templateId, companyId) {
   }
 }
 
+export async function updatePdfTemplate(templateId, companyId, { name, pdfJson }) {
+  const doc = getFirestore().collection(PDF_TEMPLATES_COLLECTION).doc(templateId);
+  const snap = await doc.get();
+  if (!snap.exists || snap.data().companyId !== companyId) {
+    throw new Error('Template not found');
+  }
+  const now = new Date();
+  const updates = {
+    updatedAt: now,
+    ...(name != null && { name: String(name).trim() || snap.data().name }),
+    ...(pdfJson != null && { pdfJson }),
+  };
+  await doc.update(updates);
+  return _serializePdfTemplate({ ...snap.data(), ...updates });
+}
+
 function _serializePdfTemplate(data) {
   return {
     id: data.id,

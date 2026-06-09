@@ -369,6 +369,8 @@ class CanvasMath {
         LogoElement le => le.copyWith(x: x),
         SignatureBlockElement sb => sb.copyWith(x: x),
         DividerElement de => de.copyWith(x: x),
+        ShapeElement se => se.copyWith(x: x),
+        ContainerElement ce => ce.copyWith(x: x),
       };
 
   static TemplateElement _setY(TemplateElement e, double y) =>
@@ -379,5 +381,7 @@ class CanvasMath {
         LogoElement le => le.copyWith(y: y),
         SignatureBlockElement sb => sb.copyWith(y: y),
         DividerElement de => de.copyWith(y: y),
+        ShapeElement se => se.copyWith(y: y),
+        ContainerElement ce => ce.copyWith(y: y),
       };
 }

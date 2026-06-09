@@ -24,7 +24,7 @@ class _BillingScreenState extends State<BillingScreen>
   @override
   void initState() {
     super.initState();
-    _tabs = TabController(length: 3, vsync: this);
+    _tabs = TabController(length: 2, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctrl = context.read<CreditsController>();
       ctrl.init();
@@ -77,8 +77,7 @@ class _BillingScreenState extends State<BillingScreen>
           unselectedLabelColor: AppColors.bodyMuted,
           indicatorColor: AppColors.primary,
           tabs: const [
-            Tab(text: 'Buy Credits'),
-            Tab(text: 'Subscriptions'),
+            Tab(text: 'Plans & Credits'),
             Tab(text: 'History'),
           ],
         ),
@@ -90,8 +89,7 @@ class _BillingScreenState extends State<BillingScreen>
             child: TabBarView(
               controller: _tabs,
               children: [
-                _CreditPacksTab(onBuy: _openCheckout),
-                _SubscriptionsTab(onSubscribe: _openCheckout),
+                _PlansTab(onBuy: _openCheckout, onSubscribe: _openCheckout),
                 _TransactionHistoryTab(),
               ],
             ),
@@ -111,12 +109,12 @@ class _BalanceHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: AppColors.surface,
-      padding: const EdgeInsets.fromLTRB(24, 16, 24, 20),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
       child: Row(
         children: [
           Container(
-            width: 56,
-            height: 56,
+            width: 44,
+            height: 44,
             decoration: BoxDecoration(
               color: AppColors.warningLight,
               shape: BoxShape.circle,
@@ -124,25 +122,25 @@ class _BalanceHeader extends StatelessWidget {
             child: const Icon(
               Icons.bolt_rounded,
               color: AppColors.warning,
-              size: 32,
+              size: 22,
             ),
           ),
-          const SizedBox(width: 16),
+          const SizedBox(width: 12),
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
                 'Current Balance',
                 style: TextStyle(
-                  fontSize: 13,
+                  fontSize: 12,
                   color: AppColors.bodyMuted,
                 ),
               ),
               Text(
                 '${ctrl.balance} credits',
                 style: const TextStyle(
-                  fontSize: 28,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  fontWeight: FontWeight.w700,
                   color: AppColors.body,
                 ),
               ),
@@ -165,10 +163,10 @@ class _SubscriptionChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
       decoration: BoxDecoration(
         color: AppColors.successLight,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: AppColors.success.withValues(alpha: 0.4)),
       ),
       child: Column(
@@ -178,12 +176,12 @@ class _SubscriptionChip extends StatelessWidget {
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.check_circle_outline, size: 14, color: AppColors.success),
+              const Icon(Icons.check_circle_outline, size: 12, color: AppColors.success),
               const SizedBox(width: 4),
               Text(
                 sub.planId == 'plan_starter' ? 'Starter Plan' : 'Pro Plan',
                 style: const TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w600,
                   color: AppColors.success,
                 ),
@@ -192,7 +190,7 @@ class _SubscriptionChip extends StatelessWidget {
           ),
           Text(
             '${sub.creditsPerCycle} credits / month',
-            style: const TextStyle(fontSize: 11, color: AppColors.success),
+            style: const TextStyle(fontSize: 10, color: AppColors.success),
           ),
         ],
       ),
@@ -200,33 +198,58 @@ class _SubscriptionChip extends StatelessWidget {
   }
 }
 
-// ── Credit packs tab ──────────────────────────────────────────────────────────
+// ── Plans + credits tab (combined) ──────────────────────────────────────────────
 
-class _CreditPacksTab extends StatelessWidget {
-  const _CreditPacksTab({required this.onBuy});
+class _PlansTab extends StatelessWidget {
+  const _PlansTab({required this.onBuy, required this.onSubscribe});
 
   final Future<void> Function(BuildContext, String type, String planId) onBuy;
+  final Future<void> Function(BuildContext, String type, String planId) onSubscribe;
 
   @override
   Widget build(BuildContext context) {
     final ctrl = context.watch<CreditsController>();
+    final activePlanId = ctrl.subscription?.isActive == true
+        ? ctrl.subscription!.planId
+        : null;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(14),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _SectionHeader(
+            icon: Icons.repeat_rounded,
+            title: 'Monthly Plans',
+            subtitle: 'Credits refresh each billing cycle. Better value than packs.',
+          ),
+          const SizedBox(height: 10),
+          if (ctrl.loading)
+            const Center(child: CircularProgressIndicator())
+          else if (ctrl.subscriptionPlans.isEmpty)
+            const _EmptyState(message: 'No plans available.')
+          else
+            ...ctrl.subscriptionPlans.map(
+              (plan) => _PlanCard(
+                plan: plan,
+                isActive: activePlanId == plan.id,
+                onTap: activePlanId == plan.id
+                    ? null
+                    : () => onSubscribe(context, 'subscription', plan.id),
+              ),
+            ),
+          const SizedBox(height: 12),
+          const Divider(),
+          const SizedBox(height: 10),
           _SectionHeader(
             icon: Icons.shopping_cart_outlined,
             title: 'One-time Credit Packs',
             subtitle: 'Credits never expire. Use them whenever you need.',
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 10),
           _CostGuide(),
-          const SizedBox(height: 20),
-          if (ctrl.loading)
-            const Center(child: CircularProgressIndicator())
-          else if (ctrl.creditPacks.isEmpty)
+          const SizedBox(height: 10),
+          if (!ctrl.loading && ctrl.creditPacks.isEmpty)
             const _EmptyState(message: 'No credit packs available.')
           else
             ...ctrl.creditPacks.map(
@@ -251,25 +274,25 @@ class _PackCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 8),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         side: const BorderSide(color: AppColors.border),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(10),
         child: Row(
           children: [
             Container(
-              width: 48,
-              height: 48,
+              width: 36,
+              height: 36,
               decoration: BoxDecoration(
                 color: AppColors.blue50,
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.bolt_rounded, color: AppColors.primary, size: 26),
+              child: const Icon(Icons.bolt_rounded, color: AppColors.primary, size: 20),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: 10),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -277,40 +300,40 @@ class _PackCard extends StatelessWidget {
                   Text(
                     pack.label,
                     style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 14,
                       fontWeight: FontWeight.w700,
                       color: AppColors.body,
                     ),
                   ),
                   Text(
                     pack.description,
-                    style: const TextStyle(fontSize: 13, color: AppColors.bodyMuted),
+                    style: const TextStyle(fontSize: 12, color: AppColors.bodyMuted),
                   ),
                 ],
               ),
             ),
-            const SizedBox(width: 12),
+            const SizedBox(width: 8),
             Column(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Text(
                   '\$${pack.priceInDollars.toStringAsFixed(2)}',
                   style: const TextStyle(
-                    fontSize: 18,
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
                     color: AppColors.body,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 FilledButton(
                   onPressed: onTap,
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.primary,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   ),
-                  child: const Text('Buy', style: TextStyle(fontSize: 13)),
+                  child: const Text('Buy', style: TextStyle(fontSize: 12)),
                 ),
               ],
             ),
@@ -321,54 +344,7 @@ class _PackCard extends StatelessWidget {
   }
 }
 
-// ── Subscriptions tab ─────────────────────────────────────────────────────────
 
-class _SubscriptionsTab extends StatelessWidget {
-  const _SubscriptionsTab({required this.onSubscribe});
-
-  final Future<void> Function(BuildContext, String type, String planId)
-      onSubscribe;
-
-  @override
-  Widget build(BuildContext context) {
-    final ctrl = context.watch<CreditsController>();
-    final activePlanId = ctrl.subscription?.isActive == true
-        ? ctrl.subscription!.planId
-        : null;
-
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SectionHeader(
-            icon: Icons.repeat_rounded,
-            title: 'Monthly Subscriptions',
-            subtitle:
-                'Save more per credit than buying packs directly. Credits refresh each billing cycle.',
-          ),
-          const SizedBox(height: 16),
-          _CostGuide(),
-          const SizedBox(height: 20),
-          if (ctrl.loading)
-            const Center(child: CircularProgressIndicator())
-          else if (ctrl.subscriptionPlans.isEmpty)
-            const _EmptyState(message: 'No subscription plans available.')
-          else
-            ...ctrl.subscriptionPlans.map(
-              (plan) => _PlanCard(
-                plan: plan,
-                isActive: activePlanId == plan.id,
-                onTap: activePlanId == plan.id
-                    ? null
-                    : () => onSubscribe(context, 'subscription', plan.id),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
 
 class _PlanCard extends StatelessWidget {
   const _PlanCard({
@@ -387,9 +363,9 @@ class _PlanCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       elevation: 0,
-      margin: const EdgeInsets.only(bottom: 16),
+      margin: const EdgeInsets.only(bottom: 10),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         side: BorderSide(
           color: isActive
               ? AppColors.success
@@ -405,16 +381,16 @@ class _PlanCard extends StatelessWidget {
           if (isPro)
             Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 6),
+              padding: const EdgeInsets.symmetric(vertical: 4),
               decoration: BoxDecoration(
                 color: AppColors.primary,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(10)),
               ),
               child: const Text(
                 'BEST VALUE',
                 textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
                   letterSpacing: 1.2,
@@ -422,7 +398,7 @@ class _PlanCard extends StatelessWidget {
               ),
             ),
           Padding(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -431,24 +407,24 @@ class _PlanCard extends StatelessWidget {
                     Text(
                       plan.label,
                       style: const TextStyle(
-                        fontSize: 20,
+                        fontSize: 16,
                         fontWeight: FontWeight.w800,
                         color: AppColors.body,
                       ),
                     ),
                     if (isActive) ...[
-                      const SizedBox(width: 8),
+                      const SizedBox(width: 6),
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 2),
+                            horizontal: 6, vertical: 1),
                         decoration: BoxDecoration(
                           color: AppColors.successLight,
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                         child: const Text(
                           'Active',
                           style: TextStyle(
-                            fontSize: 11,
+                            fontSize: 10,
                             fontWeight: FontWeight.w600,
                             color: AppColors.success,
                           ),
@@ -462,7 +438,7 @@ class _PlanCard extends StatelessWidget {
                         Text(
                           '\$${plan.priceInDollars.toStringAsFixed(0)}',
                           style: const TextStyle(
-                            fontSize: 26,
+                            fontSize: 20,
                             fontWeight: FontWeight.w900,
                             color: AppColors.body,
                           ),
@@ -470,21 +446,21 @@ class _PlanCard extends StatelessWidget {
                         const Text(
                           '/ month',
                           style:
-                              TextStyle(fontSize: 12, color: AppColors.bodyMuted),
+                              TextStyle(fontSize: 11, color: AppColors.bodyMuted),
                         ),
                       ],
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 8),
                 Text(
                   plan.description,
                   style: const TextStyle(
-                    fontSize: 14,
+                    fontSize: 13,
                     color: AppColors.bodyMuted,
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
@@ -492,12 +468,12 @@ class _PlanCard extends StatelessWidget {
                     style: FilledButton.styleFrom(
                       backgroundColor:
                           isActive ? AppColors.success : AppColors.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      padding: const EdgeInsets.symmetric(vertical: 10),
                     ),
                     child: Text(
                       isActive ? 'Current Plan' : 'Subscribe',
                       style: const TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 15),
+                          fontWeight: FontWeight.w700, fontSize: 13),
                     ),
                   ),
                 ),
@@ -528,7 +504,7 @@ class _TransactionHistoryTab extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.all(14),
       itemCount: ctrl.transactions.length,
       separatorBuilder: (_, __) => const Divider(height: 1),
       itemBuilder: (_, i) => _TransactionRow(tx: ctrl.transactions[i]),
@@ -548,11 +524,11 @@ class _TransactionRow extends StatelessWidget {
     final icon = isCredit ? Icons.add_circle_outline : Icons.remove_circle_outline;
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
+      padding: const EdgeInsets.symmetric(vertical: 9),
       child: Row(
         children: [
-          Icon(icon, color: color, size: 20),
-          const SizedBox(width: 12),
+          Icon(icon, color: color, size: 18),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -581,7 +557,7 @@ class _TransactionRow extends StatelessWidget {
               Text(
                 '${isCredit ? '+' : ''}${tx.amount}',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14,
                   fontWeight: FontWeight.w700,
                   color: color,
                 ),
@@ -628,23 +604,22 @@ class _SectionHeader extends StatelessWidget {
       children: [
         Row(
           children: [
-            Icon(icon, size: 20, color: AppColors.primary),
-            const SizedBox(width: 8),
+            Icon(icon, size: 16, color: AppColors.primary),
+            const SizedBox(width: 6),
             Text(
               title,
               style: const TextStyle(
-                fontSize: 17,
+                fontSize: 14,
                 fontWeight: FontWeight.w700,
                 color: AppColors.body,
               ),
             ),
           ],
         ),
-        const SizedBox(height: 4),
+        const SizedBox(height: 2),
         Text(
           subtitle,
-          style:
-              const TextStyle(fontSize: 13, color: AppColors.bodyMuted),
+          style: const TextStyle(fontSize: 12, color: AppColors.bodyMuted),
         ),
       ],
     );
@@ -655,10 +630,10 @@ class _CostGuide extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(
         color: AppColors.blue50,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(8),
         border: Border.all(color: AppColors.primaryLight),
       ),
       child: Column(
@@ -667,12 +642,12 @@ class _CostGuide extends StatelessWidget {
           const Text(
             'Credit costs per action',
             style: TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w700,
               color: AppColors.primary,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           ...[
             ('Audio transcript', 1),
             ('Video transcript', 2),
@@ -682,25 +657,25 @@ class _CostGuide extends StatelessWidget {
             ('PDF export (render)', 3),
           ].map(
             (e) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 2),
+              padding: const EdgeInsets.symmetric(vertical: 1),
               child: Row(
                 children: [
                   const Icon(Icons.bolt_rounded,
-                      size: 14, color: AppColors.warning),
-                  const SizedBox(width: 4),
+                      size: 12, color: AppColors.warning),
+                  const SizedBox(width: 3),
                   Text(
                     '${e.$2} credit${e.$2 != 1 ? 's' : ''}',
                     style: const TextStyle(
-                      fontSize: 13,
+                      fontSize: 12,
                       fontWeight: FontWeight.w600,
                       color: AppColors.body,
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
                   Text(
                     '— ${e.$1}',
                     style: const TextStyle(
-                        fontSize: 13, color: AppColors.bodyMuted),
+                        fontSize: 12, color: AppColors.bodyMuted),
                   ),
                 ],
               ),
@@ -721,11 +696,11 @@ class _EmptyState extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(40),
+        padding: const EdgeInsets.all(28),
         child: Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(color: AppColors.bodyMuted, fontSize: 14),
+          style: const TextStyle(color: AppColors.bodyMuted, fontSize: 13),
         ),
       ),
     );

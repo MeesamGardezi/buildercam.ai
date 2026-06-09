@@ -175,6 +175,71 @@ export async function removeTeamMember(companyId, uid) {
   }
 }
 
+export async function deleteOwnAccount(uid, companyId, role) {
+  const firebaseAdmin = getFirebaseAdmin();
+  const firestore = getFirestore();
+
+  if (role === 'owner' && companyId) {
+    // Delete all team members belonging to this company.
+    const membersSnapshot = await firestore
+      .collection(USERS_COLLECTION)
+      .where('companyId', '==', companyId)
+      .where('role', '!=', 'owner')
+      .get();
+
+    if (!membersSnapshot.empty) {
+      const deleteBatch = firestore.batch();
+      membersSnapshot.docs.forEach((doc) => deleteBatch.delete(doc.ref));
+      await deleteBatch.commit();
+
+      // Delete Firebase Auth accounts for each member (best-effort).
+      await Promise.all(
+        membersSnapshot.docs.map((doc) =>
+          firebaseAdmin.auth().deleteUser(doc.id).catch(() => {}),
+        ),
+      );
+    }
+
+    // Delete all member_permissions subcollection docs.
+    const permsSnapshot = await firestore
+      .collection(COMPANIES_COLLECTION)
+      .doc(companyId)
+      .collection('member_permissions')
+      .get();
+    if (!permsSnapshot.empty) {
+      const permBatch = firestore.batch();
+      permsSnapshot.docs.forEach((doc) => permBatch.delete(doc.ref));
+      await permBatch.commit();
+    }
+
+    // Delete the company document.
+    await firestore.collection(COMPANIES_COLLECTION).doc(companyId).delete();
+  } else if (companyId) {
+    // Member: clean up their own permission records.
+    const permSnapshot = await firestore
+      .collection(COMPANIES_COLLECTION)
+      .doc(companyId)
+      .collection('member_permissions')
+      .where('uid', '==', uid)
+      .get();
+    if (!permSnapshot.empty) {
+      const permBatch = firestore.batch();
+      permSnapshot.docs.forEach((doc) => permBatch.delete(doc.ref));
+      await permBatch.commit();
+    }
+  }
+
+  // Delete the user's own Firestore document.
+  await firestore.collection(USERS_COLLECTION).doc(uid).delete();
+
+  // Delete the Firebase Auth account.
+  try {
+    await firebaseAdmin.auth().deleteUser(uid);
+  } catch {
+    // Ignore — the Firebase Auth user may have already been deleted.
+  }
+}
+
 export async function getCompanySettings(companyId) {
   const doc = await getFirestore().collection(COMPANIES_COLLECTION).doc(companyId).get();
   if (!doc.exists) return { categories: [], notes: '' };

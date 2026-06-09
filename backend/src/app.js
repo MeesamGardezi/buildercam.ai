@@ -18,7 +18,7 @@ const corsOptions = {
     /^http:\/\/localhost(:\d+)?$/,
   ],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-company-id'],
   credentials: true,
 };
 
