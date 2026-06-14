@@ -13,57 +13,57 @@ const PADDLE_WEBHOOK_SECRET = process.env.PADDLE_WEBHOOK_SECRET ?? '';
 
 /**
  * One-time credit packs.
- * Direct purchase: ~$0.90–$0.75 / credit.
- * Compare to subscriptions: ~$0.67–$0.57 / credit.
+ * Direct purchase: ~$0.45–$0.37 / credit.
+ * Compare to subscriptions: ~$0.33–$0.28 / credit.
  */
 export const CREDIT_PACKS = [
   {
     id: 'pack_50',
     priceId: process.env.PADDLE_PRICE_50_CREDITS ?? '',
     credits: 50,
-    priceUsd: 4499,          // cents
+    priceUsd: 2249,          // cents
     label: '50 Credits',
-    description: '$44.99 — $0.90 per credit',
+    description: '$22.49 — $0.45 per credit',
   },
   {
     id: 'pack_150',
     priceId: process.env.PADDLE_PRICE_150_CREDITS ?? '',
     credits: 150,
-    priceUsd: 11999,
+    priceUsd: 5999,
     label: '150 Credits',
-    description: '$119.99 — $0.80 per credit',
+    description: '$59.99 — $0.40 per credit',
   },
   {
     id: 'pack_300',
     priceId: process.env.PADDLE_PRICE_300_CREDITS ?? '',
     credits: 300,
-    priceUsd: 22499,
+    priceUsd: 11249,
     label: '300 Credits',
-    description: '$224.99 — $0.75 per credit',
+    description: '$112.49 — $0.37 per credit',
   },
 ];
 
 /**
  * Monthly subscription plans.
- * Starter $100/mo → 300 credits ($0.33/credit).
- * Pro     $200/mo → 700 credits ($0.29/credit).
+ * Starter $49/mo → 300 credits ($0.16/credit).
+ * Pro     $99/mo → 700 credits ($0.14/credit).
  */
 export const SUBSCRIPTION_PLANS = [
   {
     id: 'plan_starter',
     priceId: process.env.PADDLE_PRICE_STARTER_MONTHLY ?? '',
     credits: 300,
-    priceUsd: 10000,
+    priceUsd: 4900,
     label: 'Starter',
-    description: '$100 / month — 300 credits ($0.33 each)',
+    description: '$49 / month — 300 credits ($0.16 each)',
   },
   {
     id: 'plan_pro',
     priceId: process.env.PADDLE_PRICE_PRO_MONTHLY ?? '',
     credits: 700,
-    priceUsd: 20000,
+    priceUsd: 9900,
     label: 'Pro',
-    description: '$200 / month — 700 credits ($0.29 each)',
+    description: '$99 / month — 700 credits ($0.14 each)',
   },
 ];
 

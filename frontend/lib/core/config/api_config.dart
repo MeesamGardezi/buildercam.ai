@@ -28,8 +28,8 @@ class ApiConfig {
 
   // --- API Base URL ---
   // Comment out one of the two lines below to switch between environments:
-  static const String _baseUrl = 'https://api.buildercam.ai'; // Production
-  // static const String _baseUrl = 'http://localhost:3001'; // Local
+  // static const String _baseUrl = 'https://api.buildercam.ai'; // Production
+  static const String _baseUrl = 'http://localhost:3001'; // Local
 
   static String get sowProxyBaseUrl {
     if (_sowProxyBaseUrlOverride.isNotEmpty) {
@@ -60,6 +60,7 @@ class ApiConfig {
   // ─── Store / update config ────────────────────────────────────────────────
   static const String androidPackageName = 'ai.buildercam';
   static const String iosBundleId = 'ai.buildercam';
+
   /// Fill in after App Store submission.
   static const String iosAppStoreId = '';
 }

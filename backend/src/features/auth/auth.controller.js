@@ -123,6 +123,15 @@ class AuthController {
     }
   }
 
+  async markWelcomeSeen(req, res) {
+    try {
+      await authService.markWelcomeSeen(req.user.uid);
+      return res.json({ success: true });
+    } catch (error) {
+      return this._handleError(req, res, error, 'markWelcomeSeen');
+    }
+  }
+
   _handleError(req, res, error, action) {
     console.error(
       `[${req.requestId || 'no-request-id'}] ${action} failed: ${error.message || 'Unknown error'}`,

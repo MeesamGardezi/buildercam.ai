@@ -14,6 +14,8 @@ export 'views/screens/sow_home_screen.dart';
 export 'views/screens/sow_history_screen.dart';
 export 'views/screens/sow_recording_screen.dart';
 export 'views/screens/sow_settings_screen.dart';
+export 'views/screens/sow_voice_chat_screen.dart';
+export 'views/screens/sow_voice_history_screen.dart';
 export 'views/screens/video_feed_screen.dart';
 export 'views/widgets/recording_control_button.dart';
 export 'views/widgets/recording_status_bar.dart';

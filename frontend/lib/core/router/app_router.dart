@@ -21,6 +21,7 @@ import 'package:buildercam/core/core.dart';
 import 'package:buildercam/features/auth/auth_module.dart';
 import 'package:buildercam/features/auth/views/screens/delete_account_screen.dart';
 import 'package:buildercam/features/auth/views/screens/legal_screen.dart';
+import 'package:buildercam/features/auth/views/screens/welcome_screen.dart';
 import 'package:buildercam/features/credits/credits_module.dart';
 import 'package:buildercam/features/pdf_editor/models/pdf_document_data.dart';
 import 'package:buildercam/features/pdf_editor/models/template_model.dart';
@@ -40,6 +41,7 @@ enum AppRoute {
   login('/login', 'login'),
   register('/register', 'register'),
   setupCompany('/setup-company', 'setup-company'),
+  welcome('/welcome', 'welcome'),
   // ── Guest ──────────────────────────────────────────────────────────────────
   guest('/guest', 'guest'),
   guestRecording('/guest/recording/:projectId', 'guest-recording'),
@@ -53,6 +55,7 @@ enum AppRoute {
   // ── Fullscreen (no sidebar) ────────────────────────────────────────────────
   recording('/project/:projectId/recording', 'recording'),
   videoFeed('/project/:projectId/video-feed', 'video-feed'),
+  voiceChat('/project/:projectId/voice', 'voice-chat'),
   sowHistory('/project/:projectId/recording/history', 'sow-history'),
   templatePreview('/template/preview', 'template-preview'),
   // ── Settings / team (pushed on top) ───────────────────────────────────────
@@ -106,6 +109,11 @@ GoRouter buildAppRouter(AuthController auth) {
         path: AppRoute.setupCompany.path,
         name: AppRoute.setupCompany.name,
         builder: (_, __) => const SetupCompanyScreen(),
+      ),
+      GoRoute(
+        path: AppRoute.welcome.path,
+        name: AppRoute.welcome.name,
+        builder: (_, __) => const WelcomeScreen(),
       ),
 
       // ── Guest ─────────────────────────────────────────────────────────────
@@ -240,6 +248,20 @@ GoRouter buildAppRouter(AuthController auth) {
           return VideoFeedScreen(
             projectId: projectId,
             onFeedComplete: args?.onFeedComplete,
+          );
+        },
+      ),
+
+      // ── Voice assistant (fullscreen, hands-free) ─────────────────────────
+      GoRoute(
+        path: AppRoute.voiceChat.path,
+        name: AppRoute.voiceChat.name,
+        builder: (context, state) {
+          final projectId =
+              state.pathParameters['projectId'] ?? ApiConfig.demoProjectId;
+          return SowVoiceChatScreen(
+            projectId: projectId,
+            tokenProvider: auth.getIdToken,
           );
         },
       ),
@@ -408,8 +430,15 @@ String? _redirect(AuthController auth, GoRouterState state) {
             _isValidDeepLink(deep.split('?').first, isGuest, isOwner)) {
           return deep;
         }
+        // Show the welcome screen to brand-new (non-guest) users.
+        if (!isGuest && auth.user?.hasSeenWelcome == false) {
+          return AppRoute.welcome.path;
+        }
         return home;
       }
+
+      // Keep the user on welcome until they dismiss it.
+      if (loc == AppRoute.welcome.path) return null;
 
       // Guests are confined to /guest/** paths.
       if (isGuest && (loc.startsWith('/home') || loc.startsWith('/project'))) {

@@ -2457,6 +2457,40 @@ class _MobileWorkspaceContentState extends State<_MobileWorkspaceContent> {
                   SizedBox(
                     height: 52,
                     child: FilledButton.icon(
+                      onPressed: isRecording || isSaving
+                          ? null
+                          : () => context.pushNamed(
+                                AppRoute.voiceChat.name,
+                                pathParameters: {
+                                  'projectId': widget.project.id,
+                                },
+                              ),
+                      icon: const Icon(Icons.graphic_eq_rounded, size: 20),
+                      label: const Text(
+                        'Talk',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: isRecording || isSaving
+                            ? AppColors.bodyMuted
+                            : AppColors.surfaceRaised,
+                        foregroundColor: isRecording || isSaving
+                            ? Colors.white
+                            : AppColors.primary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius:
+                              BorderRadius.circular(AppSpacing.radiusSm),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    height: 52,
+                    child: FilledButton.icon(
                         onPressed: isSaving
                             ? null
                             : () async {
@@ -4356,6 +4390,24 @@ class _WorkspaceContentState extends State<_WorkspaceContent> {
                     ),
                   ),
                   const SizedBox(width: AppSpacing.s4),
+                  FilledButton.icon(
+                    onPressed: isRecording || isBusy
+                        ? null
+                        : () => context.pushNamed(
+                              AppRoute.voiceChat.name,
+                              pathParameters: {
+                                'projectId': widget.project.id,
+                              },
+                            ),
+                    icon: const Icon(Icons.graphic_eq_rounded, size: 16),
+                    label: const Text('Talk'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 36),
+                    ),
+                  ),
+                  const SizedBox(width: AppSpacing.s3),
                   _StatusChip(status: widget.project.statusLabel),
                 ],
               ),

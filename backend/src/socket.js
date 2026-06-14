@@ -9,6 +9,9 @@ export function initSocketIO(httpServer) {
     cors: { origin: true },
     pingTimeout: 60000,
     pingInterval: 25000,
+    // The voice-agent WebSocket proxy shares this HTTP server — don't let
+    // engine.io destroy upgrade requests that aren't for /socket.io/.
+    destroyUpgrade: false,
   });
 
   io.on('connection', (socket) => {

@@ -1,5 +1,6 @@
 // Purpose: Firestore and Firebase Admin operations for company setup and team member management.
 import { getFirebaseAdmin, getFirestore } from '../../config/firebase-admin.js';
+import { addCredits } from '../credits/credits.service.js';
 
 const USERS_COLLECTION = 'users';
 const COMPANIES_COLLECTION = 'companies';
@@ -24,6 +25,7 @@ export async function createCompany({ uid, email, displayName, companyName }) {
     displayName: String(displayName || '').trim(),
     companyId,
     role: 'owner',
+    hasSeenWelcome: false,
     createdAt: now,
   };
 
@@ -35,6 +37,13 @@ export async function createCompany({ uid, email, displayName, companyName }) {
   await getFirebaseAdmin().auth().setCustomUserClaims(uid, {
     companyId,
     role: 'owner',
+  });
+
+  // Grant 25 free welcome credits to every new account owner.
+  await addCredits(uid, 25, {
+    description: 'Welcome gift — 25 free credits to get you started',
+    type: 'welcome',
+    companyId,
   });
 
   return {
@@ -103,6 +112,7 @@ export async function createTeamMember({ companyId, email, password, displayName
     displayName: firebaseUser.displayName || String(displayName || '').trim(),
     companyId,
     role: 'member',
+    hasSeenWelcome: true,  // team members go straight to the dashboard
     createdAt: now,
   };
 
@@ -115,6 +125,19 @@ export async function createTeamMember({ companyId, email, password, displayName
   });
 
   return _serializeUser(userPayload);
+}
+
+// ── Welcome seen ──────────────────────────────────────────────────────────────
+
+/**
+ * Marks that the user has dismissed the welcome screen.
+ * Idempotent — safe to call multiple times.
+ */
+export async function markWelcomeSeen(uid) {
+  await getFirestore()
+    .collection(USERS_COLLECTION)
+    .doc(uid)
+    .set({ hasSeenWelcome: true }, { merge: true });
 }
 
 export async function listTeamMembers(companyId) {
@@ -283,6 +306,7 @@ function _serializeUser(data = {}) {
     companyId: data.companyId || '',
     role: data.role || 'member',
     isVip: data.isVip === true,
+    hasSeenWelcome: data.hasSeenWelcome === true,
     createdAt: _serializeDate(data.createdAt),
   };
 }

@@ -488,6 +488,18 @@ class AuthController extends ChangeNotifier {
       _status = AuthStatus.noCompany;
       _user = null;
     } else {
+      // Fetch the full profile so we get hasSeenWelcome from Firestore.
+      bool hasSeenWelcome = true; // safe default for existing users
+      try {
+        final idToken = await firebaseUser.getIdToken();
+        if (idToken != null) {
+          final profile = await _authService.fetchMe(idToken);
+          hasSeenWelcome = profile?['hasSeenWelcome'] as bool? ?? true;
+        }
+      } catch (_) {
+        // Non-fatal — treat as already seen so we don't block login.
+      }
+
       _status = AuthStatus.authenticated;
       _user = AppUser(
         uid: firebaseUser.uid,
@@ -495,6 +507,7 @@ class AuthController extends ChangeNotifier {
         displayName: firebaseUser.displayName ?? '',
         companyId: companyId,
         role: role,
+        hasSeenWelcome: hasSeenWelcome,
       );
     }
     notifyListeners();
@@ -507,7 +520,30 @@ class AuthController extends ChangeNotifier {
         companyId: 'guest',
         role: 'guest',
         isGuest: true,
+        hasSeenWelcome: true, // guests skip the welcome screen
       );
+
+  /// Marks the welcome screen as dismissed in Firestore and updates the
+  /// in-memory [AppUser] so the router redirect flips immediately.
+  Future<void> markWelcomeSeen() async {
+    final token = await getIdToken();
+    if (token == null) return;
+    await _authService.markWelcomeSeen(token);
+    final current = _user;
+    if (current != null) {
+      _user = AppUser(
+        uid: current.uid,
+        email: current.email,
+        displayName: current.displayName,
+        companyId: current.companyId,
+        role: current.role,
+        isVip: current.isVip,
+        isGuest: current.isGuest,
+        hasSeenWelcome: true,
+      );
+      notifyListeners();
+    }
+  }
 
   void _clearError() {
     if (_errorMessage != null) {

@@ -10,6 +10,7 @@ class AppUser {
     required this.role,
     this.isVip = false,
     this.isGuest = false,
+    this.hasSeenWelcome = true,
   });
 
   final String uid;
@@ -24,6 +25,10 @@ class AppUser {
   final bool isVip;
 
   final bool isGuest;
+
+  /// False only for brand-new accounts that haven't dismissed the welcome screen yet.
+  /// Stored in Firestore so it persists across devices.
+  final bool hasSeenWelcome;
 
   bool get isOwner => role == 'owner';
 

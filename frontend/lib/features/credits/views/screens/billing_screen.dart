@@ -654,7 +654,7 @@ class _CostGuide extends StatelessWidget {
             ('Save SOW document', 1),
             ('Save PDF document', 1),
             ('SOW generation (AI)', 3),
-            ('PDF export (render)', 3),
+            ('PDF generation (AI)', 3),
           ].map(
             (e) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 1),

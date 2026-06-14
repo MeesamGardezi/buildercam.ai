@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/sow_chat_message.dart';
+
 class SowSettings {
   const SowSettings({
     this.specialInstructions = '',
@@ -98,6 +100,44 @@ class SowSharedPrefsService {
       prefs.setBool(_keyIncludeMaterials, settings.includeMaterials),
       prefs.setBool(_keyIncludeEstimate, settings.includeEstimate),
     ]);
+  }
+
+  // ── Voice assistant conversation history ─────────────────────────────────
+  // Stored newest-first, capped so prefs stay small.
+
+  static const String _keyVoiceHistory = 'sow_voice_history';
+  static const int _voiceHistoryLimit = 20;
+
+  Future<void> addVoiceConversation(SowVoiceConversation conversation) async {
+    if (conversation.messages.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final existing = await loadVoiceConversations();
+    final updated = <SowVoiceConversation>[conversation, ...existing]
+        .take(_voiceHistoryLimit)
+        .map((c) => c.toJson())
+        .toList(growable: false);
+    await prefs.setString(_keyVoiceHistory, jsonEncode(updated));
+  }
+
+  Future<List<SowVoiceConversation>> loadVoiceConversations() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_keyVoiceHistory);
+    if (raw == null || raw.isEmpty) return const [];
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return const [];
+      return decoded
+          .whereType<Map<String, dynamic>>()
+          .map(SowVoiceConversation.fromJson)
+          .toList(growable: false);
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> clearVoiceConversations() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_keyVoiceHistory);
   }
 
   // ── PDF editor draft ─────────────────────────────────────────────────────

@@ -20,6 +20,7 @@ import {
   deleteTemplate,
 } from '../../services/firestore.service.js';
 import { getCompanySettings } from '../auth/auth.service.js';
+import { generatePdfLayout } from './generate-pdf-layout.service.js';
 
 class SowService {
   async createProject(project) {
@@ -177,6 +178,25 @@ Rules:
     } catch {
       throw new Error(`Gemini returned non-JSON response. Raw: ${raw.slice(0, 200)}`);
     }
+  }
+
+  /**
+   * Generates a complete, render-ready PDF layout (elements + pageSize) from
+   * SOW text using Gemini. When [pdfTemplate] is supplied, its structural
+   * branding elements (logos, banners, dividers, signature blocks) are
+   * preserved and the AI lays SOW content around them.
+   *
+   * @param {object} opts
+   * @param {string} opts.sowText
+   * @param {string} [opts.projectName]
+   * @param {string} [opts.clientName]
+   * @param {string} [opts.siteLocation]
+   * @param {string} [opts.instructions]
+   * @param {object} [opts.pdfTemplate]   // { pdfJson, name } or { elements, pageSize }
+   * @returns {Promise<{ pageSize: {width:number,height:number}, elements: object[] }>}
+   */
+  async generatePdfLayout(opts) {
+    return generatePdfLayout(opts);
   }
 
   async generateSow(projectId, transcriptIds, companyId, settings = {}) {

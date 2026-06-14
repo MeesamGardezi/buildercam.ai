@@ -7,8 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../pdf_editor/models/pdf_document_data.dart';
 import '../../models/sow_template_model.dart';
-import '../../services/sow_editor_converter.dart';
 import '../../services/sow_firestore_service.dart';
 import '../../services/sow_pdf_service.dart';
 
@@ -171,57 +171,34 @@ class _SowDocumentScreenState extends State<SowDocumentScreen> {
     setState(() => _isPdfDialogOpen = false);
     if (result == null) return;
 
-    // Build instructions, optionally prepending the selected template's
-    // section structure so the AI follows it when formatting the PDF.
-    final String effectiveInstructions;
+    final projectId = widget.projectId;
+    if (projectId == null) {
+      _showSnack('Cannot generate a PDF — missing project context');
+      return;
+    }
+
+    // A SOW (content) template contributes its section text as instructions.
+    // A PDF (layout) template is sent whole so the AI preserves its branding,
+    // logos and structure. Plain instructions are forwarded as-is.
     final selectedTemplate = result.selectedTemplate;
     final selectedPdfTemplate = result.selectedPdfTemplate;
+
+    final String effectiveInstructions;
     if (selectedTemplate != null) {
-      final buf = StringBuffer();
-      buf.writeln(
-        'Follow this template structure for the PDF sections. '
-        'Use exactly these section headings and organise all SOW '
-        'content under them:',
-      );
-      buf.writeln();
-      buf.writeln('=== TEMPLATE: ${selectedTemplate.name} ===');
-      buf.writeln(selectedTemplate.content);
-      buf.writeln('===');
+      final buf = StringBuffer()
+        ..writeln(
+          'Follow this template structure for the PDF sections. '
+          'Use exactly these section headings and organise all SOW '
+          'content under them:',
+        )
+        ..writeln()
+        ..writeln('=== TEMPLATE: ${selectedTemplate.name} ===')
+        ..writeln(selectedTemplate.content)
+        ..writeln('===');
       if (result.instructions.isNotEmpty) {
-        buf.writeln();
-        buf.writeln('Additional instructions: ${result.instructions}');
-      }
-      effectiveInstructions = buf.toString();
-    } else if (selectedPdfTemplate != null) {
-      // Extract section names from the PDF layout template's text elements.
-      final pdfJson = selectedPdfTemplate['pdfJson'];
-      final sectionTexts = <String>[];
-      if (pdfJson is Map<String, dynamic> && pdfJson['elements'] is List) {
-        for (final el in (pdfJson['elements'] as List)) {
-          if (el is Map<String, dynamic> && el['type'] == 'text') {
-            final content = el['content']?.toString().trim() ?? '';
-            if (content.isNotEmpty) sectionTexts.add(content);
-          }
-        }
-      }
-      final buf = StringBuffer();
-      buf.writeln(
-        'Follow this PDF layout template structure when organising the document. '
-        'Use the following section headings and labels from the template:',
-      );
-      buf.writeln();
-      buf.writeln('=== PDF TEMPLATE: ${selectedPdfTemplate['name']} ===');
-      if (sectionTexts.isNotEmpty) {
-        for (final t in sectionTexts) {
-          buf.writeln('- $t');
-        }
-      } else {
-        buf.writeln('(structure the content to match this layout template)');
-      }
-      buf.writeln('===');
-      if (result.instructions.isNotEmpty) {
-        buf.writeln();
-        buf.writeln('Additional instructions: ${result.instructions}');
+        buf
+          ..writeln()
+          ..writeln('Additional instructions: ${result.instructions}');
       }
       effectiveInstructions = buf.toString();
     } else {
@@ -230,14 +207,19 @@ class _SowDocumentScreenState extends State<SowDocumentScreen> {
 
     setState(() => _isGeneratingAiPdf = true);
     try {
-      // structureSow throws if Gemini isn't configured or the call fails.
-      final sections = await _pdfService.structureSow(
-        _contentController.text,
+      // generatePdfLayout throws if Gemini isn't configured or the call fails.
+      final docData = await _pdfService.generatePdfLayout(
+        projectId: projectId,
+        sowText: _contentController.text,
         instructions: effectiveInstructions,
+        projectName: widget.projectName,
+        clientName: widget.clientName,
+        siteLocation: widget.siteLocation,
+        pdfTemplate: selectedPdfTemplate,
         tokenProvider: widget.backendService?.tokenProvider,
       );
       if (!mounted) return;
-      _openInEditor(sections);
+      _openInEditor(docData);
     } catch (e) {
       if (!mounted) return;
       _showSnack('AI PDF failed: $e');
@@ -246,13 +228,7 @@ class _SowDocumentScreenState extends State<SowDocumentScreen> {
     }
   }
 
-  void _openInEditor(List<SowPdfSection> sections) {
-    final docData = SowEditorConverter.convert(
-      projectName: widget.projectName,
-      clientName: widget.clientName,
-      siteLocation: widget.siteLocation,
-      sections: sections,
-    );
+  void _openInEditor(PdfDocumentData docData) {
     final args = PdfEditorArgs(
       initialData: docData,
       apiBaseUrl: ApiConfig.sowProxyBaseUrl,
@@ -1713,5 +1689,3 @@ class _AiPdfDialogState extends State<_AiPdfDialog> {
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum _MenuAction { copy, share, openEditor }
-
-

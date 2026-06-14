@@ -3,6 +3,7 @@ import 'package:buildercam/core/core.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/shared_prefs_service.dart';
+import 'sow_voice_history_screen.dart';
 
 class SowSettingsScreen extends StatefulWidget {
   const SowSettingsScreen({super.key});
@@ -183,6 +184,67 @@ class _SowSettingsScreenState extends State<SowSettingsScreen> {
                         value: _includeEstimate,
                         onChanged:
                             (v) => setState(() => _includeEstimate = v!),
+                      ),
+                      const SizedBox(height: AppSpacing.s6),
+
+                      // ── Voice assistant ──────────────────────────────────
+                      Text(
+                        'Voice assistant',
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      const SizedBox(height: AppSpacing.s3),
+                      InkWell(
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const SowVoiceHistoryScreen(),
+                          ),
+                        ),
+                        borderRadius:
+                            BorderRadius.circular(AppSpacing.radiusLg),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AppSpacing.s4,
+                            vertical: AppSpacing.s3,
+                          ),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            borderRadius:
+                                BorderRadius.circular(AppSpacing.radiusLg),
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: Row(
+                            children: [
+                              const Icon(Icons.history_rounded,
+                                  size: 20, color: AppColors.primary),
+                              const SizedBox(width: AppSpacing.s3),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Conversation history',
+                                      style: theme.textTheme.labelLarge,
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Transcripts of past voice assistant '
+                                      'conversations.',
+                                      style: theme.textTheme.bodySmall
+                                          ?.copyWith(
+                                        color: AppColors.bodyMuted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const Icon(Icons.chevron_right_rounded,
+                                  color: AppColors.bodyMuted),
+                            ],
+                          ),
+                        ),
                       ),
                       const SizedBox(height: AppSpacing.s6),
 

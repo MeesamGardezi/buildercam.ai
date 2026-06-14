@@ -243,6 +243,53 @@ class SowController {
     }
   }
 
+  /**
+   * AI-generates a complete PDF layout (elements + pageSize) from SOW text.
+   * Optionally follows a PDF template's branding/structure. Costs the same as
+   * a PDF generation (render) since it produces the final renderable layout.
+   *
+   * Route: POST /api/sow-transcription/projects/:projectId/generate-pdf-layout
+   * Body:  { sowText, instructions?, projectName?, clientName?, siteLocation?, pdfTemplate? }
+   */
+  async generatePdfLayout(req, res) {
+    try {
+      const { projectId } = req.params;
+      const {
+        sowText,
+        instructions = '',
+        projectName = '',
+        clientName = '',
+        siteLocation = '',
+        pdfTemplate = null,
+      } = req.body;
+
+      if (!sowText || !String(sowText).trim()) {
+        return res.status(400).json({ success: false, message: 'sowText is required.' });
+      }
+
+      const layout = await sowService.generatePdfLayout({
+        sowText: String(sowText),
+        instructions: typeof instructions === 'string' ? instructions : '',
+        projectName: String(projectName || ''),
+        clientName: String(clientName || ''),
+        siteLocation: String(siteLocation || ''),
+        pdfTemplate: pdfTemplate && typeof pdfTemplate === 'object' ? pdfTemplate : null,
+      });
+
+      // Deduct credits for the AI layout generation (same cost as PDF render).
+      const billingUid = await resolveBillingUid(req);
+      spendCredits(billingUid, CREDIT_COSTS.pdf_generation, {
+        actionType: 'pdf_generation',
+        projectId,
+        companyId: req.user.companyId,
+      }).catch((err) => console.error('[credits] pdf_generation (ai layout) spend failed:', err));
+
+      return res.json({ success: true, ...layout });
+    } catch (error) {
+      return this._handleError(req, res, error, 'generatePdfLayout');
+    }
+  }
+
   async listPdfDocuments(req, res) {
     try {
       const documents = await sowService.listPdfDocuments(req.params.projectId, req.user.companyId);

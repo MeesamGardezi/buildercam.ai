@@ -2,6 +2,7 @@
 import 'dart:convert';
 
 import 'package:buildercam/core/core.dart';
+import 'package:buildercam/features/pdf_editor/models/pdf_document_data.dart';
 import 'package:http/http.dart' as http;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -75,8 +76,64 @@ class SowPdfService {
             _ => SowPdfItemType.paragraph,
           };
           return SowPdfItem(type: type, text: im['text'] as String? ?? '');
-        }).toList(growable: false),
+        }).toList(),
       );
-    }).toList(growable: false);
+    }).toList();
+  }
+
+  /// AI-generates a complete, ready-to-edit PDF layout from [sowText] by calling
+  /// the backend `/projects/:projectId/generate-pdf-layout` endpoint. Gemini
+  /// emits the full element list (positions, styles, colours, content), so the
+  /// result is dropped straight into [PdfEditorWidget] — no client-side layout.
+  ///
+  /// When [pdfTemplate] is supplied (the raw template map with a `pdfJson` key),
+  /// its branding/structural elements (logos, banners, dividers, signature
+  /// blocks) are preserved and the SOW content is laid out around them.
+  ///
+  /// Throws on network or server failure so callers can surface a clear error.
+  Future<PdfDocumentData> generatePdfLayout({
+    required String projectId,
+    required String sowText,
+    String instructions = '',
+    String projectName = '',
+    String clientName = '',
+    String siteLocation = '',
+    Map<String, dynamic>? pdfTemplate,
+    Future<String?> Function()? tokenProvider,
+  }) async {
+    if (sowText.trim().isEmpty) {
+      throw StateError('Cannot generate a PDF layout from empty SOW text.');
+    }
+
+    final token = await tokenProvider?.call();
+    final resp = await http
+        .post(
+          Uri.parse(
+            '${ApiConfig.sowProxyBaseUrl}'
+            '/api/sow-transcription/projects/$projectId/generate-pdf-layout',
+          ),
+          headers: {
+            'Content-Type': 'application/json',
+            if (token != null) 'Authorization': 'Bearer $token',
+          },
+          body: jsonEncode({
+            'sowText': sowText,
+            'instructions': instructions,
+            'projectName': projectName,
+            'clientName': clientName,
+            'siteLocation': siteLocation,
+            if (pdfTemplate != null) 'pdfTemplate': pdfTemplate,
+          }),
+        )
+        .timeout(const Duration(seconds: 120));
+
+    if (resp.statusCode != 200) {
+      throw StateError('AI PDF layout failed (${resp.statusCode}): ${resp.body}');
+    }
+
+    final data = jsonDecode(resp.body) as Map<String, dynamic>;
+    // Backend returns { success, pageSize, elements } — PdfDocumentData.fromJson
+    // reads pageSize + elements directly and skips any malformed element.
+    return PdfDocumentData.fromJson(data);
   }
 }

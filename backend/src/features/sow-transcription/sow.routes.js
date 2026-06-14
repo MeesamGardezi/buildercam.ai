@@ -71,6 +71,16 @@ router.post(
   (req, res) => sowController.generateSow(req, res),
 );
 
+// AI-generated PDF layout from SOW text (optionally following a PDF template).
+// Costs the same as a PDF generation (render) since it produces the final
+// renderable layout. Gated by canExport like other PDF-producing actions.
+router.post(
+  '/projects/:projectId/generate-pdf-layout',
+  requirePermission('canExport'),
+  requireCredits(CREDIT_COSTS.pdf_generation),
+  (req, res) => sowController.generatePdfLayout(req, res),
+);
+
 router.get(
   '/projects/:projectId/sow-documents',
   requirePermission('canView'),

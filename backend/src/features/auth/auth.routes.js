@@ -60,4 +60,9 @@ router.put('/company-settings', verifyFirebaseToken, requireCompany, requireOwne
   authController.updateCompanySettings(req, res),
 );
 
+// Mark that the authenticated user has seen the welcome screen (stored in Firestore).
+router.post('/mark-welcome-seen', verifyFirebaseToken, requireCompany, (req, res) =>
+  authController.markWelcomeSeen(req, res),
+);
+
 export default router;

@@ -48,6 +48,8 @@ __pycache__/
 
 # Secrets and local config
 **/firebase-key.json
+**/google-services.json
+**/GoogleService-Info.plist
 **/.env
 **/.env.*
 

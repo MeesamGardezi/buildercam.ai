@@ -46,6 +46,29 @@ class AuthService {
     _assertSuccess(response, 'setupCompany');
   }
 
+  /// Fetch the full user profile (including [hasSeenWelcome]) from the backend.
+  Future<Map<String, dynamic>?> fetchMe(String idToken) async {
+    final response = await _client.get(
+      _baseUri.resolve('/api/auth/me'),
+      headers: _headers(idToken),
+    );
+    if (response.statusCode >= 400) return null;
+    final payload = _decode(response);
+    return payload['user'] as Map<String, dynamic>?;
+  }
+
+  /// Marks the welcome screen as seen in Firestore (cross-device persisted).
+  Future<void> markWelcomeSeen(String idToken) async {
+    try {
+      await _client.post(
+        _baseUri.resolve('/api/auth/mark-welcome-seen'),
+        headers: _headers(idToken),
+      );
+    } catch (_) {
+      // Non-fatal — worst case user sees welcome again on next cold start.
+    }
+  }
+
   Future<TeamMember> createTeamMember({
     required String email,
     required String password,
