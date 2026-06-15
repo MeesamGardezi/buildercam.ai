@@ -32,6 +32,16 @@
 				<string>com.googleusercontent.apps.373731403649-pibp5g4eeiifl0u4f5gcosmchc89nrs3</string>
 			</array>
 		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>ai.buildercam.deeplink</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>buildercam</string>
+			</array>
+		</dict>
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>

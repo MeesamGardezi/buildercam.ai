@@ -46,9 +46,13 @@ class _MobileSowVoiceAgentService implements SowVoiceAgentService {
   bool _isClosing = false;
   bool _userMuted = false;
 
-  /// True while flutter_tts is speaking — the mic is gated during playback so
-  /// the model doesn't hear its own reply through the speaker.
+  /// True while flutter_tts is speaking — silence is injected during playback
+  /// so the server-VAD stream stays alive without echoing TTS audio back.
   bool _ttsSpeaking = false;
+
+  /// Safety net: resets _ttsSpeaking if the flutter_tts completion callback
+  /// never fires (a known platform bug on some Android versions).
+  Timer? _ttsSpeakingTimeout;
 
   @override
   Stream<SowVoiceEvent> get events => _events.stream;
@@ -146,6 +150,7 @@ class _MobileSowVoiceAgentService implements SowVoiceAgentService {
   }
 
   Future<void> _disposeAsync() async {
+    _ttsSpeakingTimeout?.cancel();
     await disconnect();
     _recorder.dispose();
     await _events.close();
@@ -168,8 +173,12 @@ class _MobileSowVoiceAgentService implements SowVoiceAgentService {
   }
 
   void _onTtsDone() {
+    _ttsSpeakingTimeout?.cancel();
+    _ttsSpeakingTimeout = null;
     if (!_ttsSpeaking) return;
     _ttsSpeaking = false;
+    // Discard silence bytes buffered during TTS so real speech starts cleanly.
+    _pendingPcmBytes.clear();
     _emit(const VoiceSpeakingChanged(false));
   }
 
@@ -177,6 +186,10 @@ class _MobileSowVoiceAgentService implements SowVoiceAgentService {
     if (text.trim().isEmpty) return;
     _ttsSpeaking = true;
     _emit(const VoiceSpeakingChanged(true));
+    // Safety net: ~80 ms per character, clamped to 3–30 s.
+    // Fires _onTtsDone if the flutter_tts completion callback never comes.
+    final timeoutMs = (text.length * 80).clamp(3000, 30000);
+    _ttsSpeakingTimeout = Timer(Duration(milliseconds: timeoutMs), _onTtsDone);
     try {
       await _tts.speak(text);
     } catch (e) {
@@ -219,6 +232,16 @@ class _MobileSowVoiceAgentService implements SowVoiceAgentService {
         onError: (Object error) {
           _emitError('Microphone stream failed: $error');
         },
+        onDone: () {
+          // OS interrupted the audio session (phone call, BT disconnect, etc.)
+          // — restart the mic so the session can continue.
+          if (!_isClosing && _isConnected) {
+            if (kDebugMode) {
+              debugPrint('[SowVoiceMobile] mic stream ended unexpectedly, restarting');
+            }
+            unawaited(_startMicrophone());
+          }
+        },
       );
     } catch (error) {
       final liveError = GeminiLiveError(
@@ -242,11 +265,14 @@ class _MobileSowVoiceAgentService implements SowVoiceAgentService {
   }
 
   void _bufferAudioBytes(Uint8List bytes) {
-    // Gate the mic while muted or while the reply is being spoken — without
-    // this the model hears its own TTS audio and talks over itself.
-    if (_userMuted || _ttsSpeaking || !_isConnected) return;
+    if (!_isConnected) return;
+    if (_userMuted) return;
 
-    _pendingPcmBytes.addAll(bytes);
+    // While TTS is playing, inject silence instead of real mic audio.
+    // This keeps the Gemini server-VAD stream alive (preventing stale-VAD
+    // drop-outs) without echoing the TTS audio back through the open mic.
+    final payload = _ttsSpeaking ? Uint8List(bytes.length) : bytes;
+    _pendingPcmBytes.addAll(payload);
 
     final chunkByteSize = geminiLiveInputSampleRate *
         geminiLiveChunkInterval.inMilliseconds ~/

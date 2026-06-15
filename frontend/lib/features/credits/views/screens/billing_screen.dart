@@ -1,6 +1,7 @@
 // Purpose: Billing screen — shows credit balance, plans, and transaction history.
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
@@ -18,27 +19,55 @@ class BillingScreen extends StatefulWidget {
 }
 
 class _BillingScreenState extends State<BillingScreen>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late TabController _tabs;
+
+  /// True from the moment we hand the user off to Paddle until we've confirmed
+  /// the outcome. Drives the "verify on return" flow.
+  bool _awaitingPayment = false;
+
+  /// True while a reconciliation /sync round is in flight (shows the banner).
+  bool _verifying = false;
 
   @override
   void initState() {
     super.initState();
     _tabs = TabController(length: 2, vsync: this);
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final ctrl = context.read<CreditsController>();
       ctrl.init();
       ctrl.loadTransactions();
+      // Reconcile any straggler purchases on entry — covers the case where the
+      // app was reopened (cold start / deep link) after paying. Idempotent.
+      _reconcile(silent: true);
     });
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tabs.dispose();
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When the user comes back from the external Paddle checkout, verify the
+    // payment regardless of how they returned (deep link or manual switch).
+    if (state == AppLifecycleState.resumed && _awaitingPayment) {
+      _reconcile(silent: false);
+    }
+  }
+
   // ── Checkout ───────────────────────────────────────────────────────────────
+
+  /// Where Paddle returns the user after payment. On web we round-trip through
+  /// the web app; on mobile we use the `buildercam://` deep link so the OS
+  /// re-foregrounds the app.
+  String get _returnUrl => kIsWeb
+      ? '${Uri.base.origin}/billing?paid=1'
+      : 'buildercam://billing?paid=1';
 
   Future<void> _openCheckout(
     BuildContext context,
@@ -46,16 +75,78 @@ class _BillingScreenState extends State<BillingScreen>
     String planId,
   ) async {
     final ctrl = context.read<CreditsController>();
-    final url = await ctrl.getCheckoutUrl(type: type, planId: planId);
-    if (url == null) return;
+    final url = await ctrl.getCheckoutUrl(
+      type: type,
+      planId: planId,
+      returnUrl: _returnUrl,
+    );
+    if (url == null) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ctrl.error ?? 'Could not start checkout.')),
+        );
+      }
+      return;
+    }
 
     final uri = Uri.parse(url);
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+    final launched =
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!launched) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not open checkout page.')),
         );
       }
+      return;
+    }
+    // Handed off successfully — arm the return-verification flow.
+    if (mounted) setState(() => _awaitingPayment = true);
+  }
+
+  /// Reconciles the payment with the backend (which checks Paddle directly).
+  /// [silent] suppresses the banner/snackbars for the on-entry straggler check.
+  Future<void> _reconcile({required bool silent}) async {
+    if (_verifying) return;
+    final ctrl = context.read<CreditsController>();
+    if (!silent && mounted) setState(() => _verifying = true);
+
+    final changed = await ctrl.syncAfterCheckout(attempts: silent ? 1 : 6);
+
+    if (!mounted) return;
+    if (silent) {
+      if (changed) setState(() => _awaitingPayment = false);
+      return;
+    }
+
+    setState(() {
+      _verifying = false;
+      if (changed) _awaitingPayment = false;
+    });
+
+    final messenger = ScaffoldMessenger.of(context);
+    if (changed) {
+      messenger.showSnackBar(
+        const SnackBar(
+          backgroundColor: AppColors.success,
+          content: Text('Payment confirmed — your credits are updated.'),
+        ),
+      );
+    } else {
+      messenger.showSnackBar(
+        SnackBar(
+          backgroundColor: AppColors.warning,
+          duration: const Duration(seconds: 6),
+          content: const Text(
+            'Still confirming your payment. This can take a moment — tap "Refresh" if it doesn\'t update.',
+          ),
+          action: SnackBarAction(
+            label: 'Refresh',
+            textColor: Colors.white,
+            onPressed: () => _reconcile(silent: false),
+          ),
+        ),
+      );
     }
   }
 
@@ -71,6 +162,14 @@ class _BillingScreenState extends State<BillingScreen>
           onPressed: () => context.pop(),
         ),
         title: const Text('Credits & Billing'),
+        actions: [
+          if (_awaitingPayment && !_verifying)
+            TextButton.icon(
+              onPressed: () => _reconcile(silent: false),
+              icon: const Icon(Icons.refresh_rounded, size: 18),
+              label: const Text('Refresh'),
+            ),
+        ],
         bottom: TabBar(
           controller: _tabs,
           labelColor: AppColors.primary,
@@ -84,6 +183,7 @@ class _BillingScreenState extends State<BillingScreen>
       ),
       body: Column(
         children: [
+          if (_verifying) const _VerifyingBanner(),
           _BalanceHeader(),
           Expanded(
             child: TabBarView(
@@ -92,6 +192,40 @@ class _BillingScreenState extends State<BillingScreen>
                 _PlansTab(onBuy: _openCheckout, onSubscribe: _openCheckout),
                 _TransactionHistoryTab(),
               ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Thin progress banner shown while we confirm a payment with the backend.
+class _VerifyingBanner extends StatelessWidget {
+  const _VerifyingBanner();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.blue50,
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Row(
+        children: const [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+          SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              'Confirming your payment…',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: AppColors.primary,
+              ),
             ),
           ),
         ],
@@ -651,10 +785,11 @@ class _CostGuide extends StatelessWidget {
           ...[
             ('Audio transcript', 1),
             ('Video transcript', 2),
-            ('Save SOW document', 1),
-            ('Save PDF document', 1),
+            ('Voice session (per 5 min)', 1),
             ('SOW generation (AI)', 3),
             ('PDF generation (AI)', 3),
+            ('Save SOW document', 1),
+            ('Save PDF document', 1),
           ].map(
             (e) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 1),

@@ -42,7 +42,7 @@ const _steps = [
     icon: Icons.mic_none_rounded,
     title: 'Record any\njob-site walkthrough',
     subtitle:
-        'Open a project and hit Record. Walk through the site talking naturally — BuilderCam transcribes everything for you.',
+        'Open a project and tap Record. Walk through the site talking naturally — BuilderCam transcribes everything in real time.',
     items: [
       'Audio transcript — 1 credit',
       'Video transcript — 2 credits',
@@ -50,10 +50,21 @@ const _steps = [
     ],
   ),
   _Step(
+    icon: Icons.record_voice_over_rounded,
+    title: 'Talk to your\nAI assistant',
+    subtitle:
+        'Open any project and tap Talk. Speak naturally — the AI reads your SOW documents and can answer questions or edit them on command.',
+    items: [
+      'Voice session — 1 credit / 5 min',
+      'Understands all your project SOWs',
+      'Can edit documents hands-free',
+    ],
+  ),
+  _Step(
     icon: Icons.description_outlined,
     title: 'Generate SOW\nand PDF reports',
     subtitle:
-        'One tap converts your transcript into a professional Scope of Work or PDF report, ready to send to clients.',
+        'One tap converts your transcript into a professional Scope of Work or PDF report, ready to share with clients.',
     items: [
       'Scope of Work (AI) — 3 credits',
       'PDF report (AI) — 3 credits',
@@ -105,10 +116,8 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
-    // Give the card a comfortable width — fills small screens, centered on large ones.
-    final cardW = (size.width - 48).clamp(0.0, 600.0);
-    // Card always fills most of the viewport height.
-    final cardH = (size.height - 48).clamp(0.0, 700.0);
+    final cardW = (size.width - 48).clamp(0.0, 560.0);
+    final cardH = (size.height - 48).clamp(0.0, 740.0);
 
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
@@ -123,9 +132,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               border: Border.all(color: AppColors.border),
               boxShadow: [
                 BoxShadow(
-                  color: AppColors.charcoal900.withValues(alpha: 0.12),
-                  blurRadius: 48,
-                  offset: const Offset(0, 16),
+                  color: AppColors.blue900.withValues(alpha: 0.14),
+                  blurRadius: 40,
+                  offset: const Offset(0, 12),
                 ),
               ],
             ),
@@ -133,18 +142,17 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // ── Dark hero — fixed height ──────────────────────────────
                 Expanded(
                   flex: 4,
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 360),
+                    duration: const Duration(milliseconds: 340),
                     switchInCurve: Curves.easeOut,
                     switchOutCurve: Curves.easeIn,
                     transitionBuilder: (child, anim) => FadeTransition(
                       opacity: anim,
                       child: SlideTransition(
                         position: Tween<Offset>(
-                          begin: const Offset(0, 0.03),
+                          begin: const Offset(0, 0.04),
                           end: Offset.zero,
                         ).animate(anim),
                         child: child,
@@ -159,12 +167,10 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     ),
                   ),
                 ),
-
-                // ── White content ─────────────────────────────────────────
                 Expanded(
                   flex: 6,
                   child: AnimatedSwitcher(
-                    duration: const Duration(milliseconds: 300),
+                    duration: const Duration(milliseconds: 280),
                     switchInCurve: Curves.easeOut,
                     transitionBuilder: (child, anim) => FadeTransition(
                       opacity: anim,
@@ -189,7 +195,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   }
 }
 
-// ─── Dark hero ────────────────────────────────────────────────────────────────
+// ─── Hero panel ───────────────────────────────────────────────────────────────
 
 class _HeroPanel extends StatelessWidget {
   const _HeroPanel({
@@ -207,42 +213,57 @@ class _HeroPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final numStr = (index + 1).toString().padLeft(2, '0');
     final isLast = index == total - 1;
 
     return Container(
-      color: AppColors.charcoal900,
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 32),
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [AppColors.blue900, AppColors.primary],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 28),
       child: Stack(
         children: [
-          // ── Ghost step number ───────────────────────────────────────────
+          // Decorative circle — subtle brand watermark
           Positioned(
-            top: -14,
-            right: -8,
-            child: Text(
-              numStr,
-              style: const TextStyle(
-                fontSize: 110,
-                fontWeight: FontWeight.w900,
-                color: AppColors.charcoal700,
-                height: 1,
+            top: -40,
+            right: -40,
+            child: Container(
+              width: 180,
+              height: 180,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.06),
+              ),
+            ),
+          ),
+          Positioned(
+            bottom: -20,
+            left: -30,
+            child: Container(
+              width: 100,
+              height: 100,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.white.withValues(alpha: 0.05),
               ),
             ),
           ),
 
-          // ── Foreground content ──────────────────────────────────────────
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Logo row + skip
+              // Top row: logo + skip
               Row(
                 children: [
                   Image.asset(
                     'assets/logos/buildercam-icon-64-transparent.png',
-                    width: 22,
-                    height: 22,
+                    width: 20,
+                    height: 20,
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 7),
                   const Text(
                     'BuilderCam',
                     style: TextStyle(
@@ -256,11 +277,11 @@ class _HeroPanel extends StatelessWidget {
                   if (!isLast)
                     GestureDetector(
                       onTap: onSkip,
-                      child: const Text(
+                      child: Text(
                         'Skip',
                         style: TextStyle(
                           fontSize: 13,
-                          color: AppColors.charcoal400,
+                          color: Colors.white.withValues(alpha: 0.55),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -270,42 +291,53 @@ class _HeroPanel extends StatelessWidget {
 
               const Spacer(),
 
-              // Feature icon
-              Icon(
-                step.icon,
-                size: 32,
-                color: AppColors.blue600,
+              // Icon in a translucent circle
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.15),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.25),
+                  ),
+                ),
+                child: Icon(
+                  step.icon,
+                  size: 26,
+                  color: Colors.white,
+                ),
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 16),
 
               // Title
               Text(
                 step.title,
                 style: const TextStyle(
-                  fontSize: 30,
+                  fontSize: 28,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
-                  height: 1.17,
-                  letterSpacing: -0.4,
+                  height: 1.18,
+                  letterSpacing: -0.5,
                 ),
               ),
 
-              const SizedBox(height: 28),
+              const SizedBox(height: 24),
 
-              // Step dots
+              // Progress dots
               Row(
                 children: List.generate(total, (i) {
                   final active = i == index;
                   return AnimatedContainer(
                     duration: const Duration(milliseconds: 260),
                     curve: Curves.easeInOut,
-                    width: active ? 22 : 6,
+                    width: active ? 20 : 6,
                     height: 6,
                     margin: const EdgeInsets.only(right: 5),
                     decoration: BoxDecoration(
                       color: active
-                          ? AppColors.blue600
-                          : AppColors.charcoal600,
+                          ? Colors.white
+                          : Colors.white.withValues(alpha: 0.3),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   );
@@ -319,7 +351,7 @@ class _HeroPanel extends StatelessWidget {
   }
 }
 
-// ─── White content panel ─────────────────────────────────────────────────────
+// ─── Content panel ────────────────────────────────────────────────────────────
 
 class _ContentPanel extends StatelessWidget {
   const _ContentPanel({
@@ -344,19 +376,19 @@ class _ContentPanel extends StatelessWidget {
 
     return Container(
       color: AppColors.surface,
-      padding: const EdgeInsets.fromLTRB(32, 28, 32, 28),
+      padding: const EdgeInsets.fromLTRB(28, 24, 28, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Credits badge (step 0 only)
           if (step.badge != null) ...[
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
               decoration: BoxDecoration(
                 color: AppColors.warningLight,
                 borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                 border: Border.all(
-                  color: AppColors.warning.withValues(alpha: 0.28),
+                  color: AppColors.warning.withValues(alpha: 0.25),
                 ),
               ),
               child: Row(
@@ -375,7 +407,7 @@ class _ContentPanel extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
           ],
 
           // Subtitle
@@ -387,13 +419,12 @@ class _ContentPanel extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
           // Items
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.start,
               children: List.generate(step.items.length, (i) {
                 final isLastItem = i == step.items.length - 1;
                 return Column(
@@ -403,20 +434,26 @@ class _ContentPanel extends StatelessWidget {
                       child: Row(
                         children: [
                           Container(
-                            width: 6,
-                            height: 6,
-                            decoration: const BoxDecoration(
-                              color: AppColors.primary,
+                            width: 26,
+                            height: 26,
+                            decoration: BoxDecoration(
+                              color: AppColors.blue50,
                               shape: BoxShape.circle,
                             ),
+                            child: const Icon(
+                              Icons.check_rounded,
+                              size: 14,
+                              color: AppColors.primary,
+                            ),
                           ),
-                          const SizedBox(width: 14),
+                          const SizedBox(width: 12),
                           Expanded(
                             child: Text(
                               step.items[i],
                               style: theme.textTheme.bodySmall?.copyWith(
                                 color: AppColors.body,
                                 fontWeight: FontWeight.w500,
+                                height: 1.4,
                               ),
                             ),
                           ),
@@ -431,11 +468,19 @@ class _ContentPanel extends StatelessWidget {
             ),
           ),
 
-          const SizedBox(height: 20),
+          const SizedBox(height: 18),
 
-          // Navigation buttons
+          // Step counter + navigation
           Row(
             children: [
+              // Step counter
+              Text(
+                '${index + 1} of $total',
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: AppColors.bodySubtle,
+                ),
+              ),
+              const Spacer(),
               if (index > 0) ...[
                 SizedBox(
                   height: 44,
@@ -444,7 +489,7 @@ class _ContentPanel extends StatelessWidget {
                     style: OutlinedButton.styleFrom(
                       foregroundColor: AppColors.body,
                       side: const BorderSide(color: AppColors.border),
-                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
                       shape: RoundedRectangleBorder(
                         borderRadius:
                             BorderRadius.circular(AppSpacing.radiusSm),
@@ -453,34 +498,32 @@ class _ContentPanel extends StatelessWidget {
                     child: const Text('Back'),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
               ],
-              Expanded(
-                child: SizedBox(
-                  height: 44,
-                  child: FilledButton(
-                    onPressed: onNext,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      shape: RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius.circular(AppSpacing.radiusSm),
-                      ),
+              SizedBox(
+                height: 44,
+                child: FilledButton(
+                  onPressed: onNext,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    padding: const EdgeInsets.symmetric(horizontal: 22),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.radiusSm),
                     ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          isLast ? 'Go to dashboard' : 'Continue',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 14,
-                          ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        isLast ? 'Go to dashboard' : 'Continue',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
                         ),
-                        const SizedBox(width: 6),
-                        const Icon(Icons.arrow_forward_rounded, size: 15),
-                      ],
-                    ),
+                      ),
+                      const SizedBox(width: 5),
+                      const Icon(Icons.arrow_forward_rounded, size: 15),
+                    ],
                   ),
                 ),
               ),

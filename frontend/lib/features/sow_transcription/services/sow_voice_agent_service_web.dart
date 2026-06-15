@@ -41,6 +41,7 @@ class _WebSowVoiceAgentService implements SowVoiceAgentService {
   web.ScriptProcessorNode? _processorNode;
   web.GainNode? _muteNode;
   double _resampleOffset = 0;
+  Timer? _contextResumeTimer;
 
   // ── Agent audio playback (24kHz output) ──
   web.AudioContext? _playbackContext;
@@ -210,6 +211,18 @@ class _WebSowVoiceAgentService implements SowVoiceAgentService {
       _sourceNode = sourceNode;
       _processorNode = processorNode;
       _muteNode = muteNode;
+
+      // Browsers can suspend the AudioContext when the tab loses focus.
+      // Poll and resume so onaudioprocess keeps firing after the user returns.
+      _contextResumeTimer?.cancel();
+      _contextResumeTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+        final ctx = _captureContext;
+        if (ctx != null && ctx.state == 'suspended') {
+          try {
+            await ctx.resume().toDart;
+          } catch (_) {}
+        }
+      });
     } catch (error) {
       final message = error.toString();
       final liveError = message.contains('NotAllowedError')
@@ -227,6 +240,8 @@ class _WebSowVoiceAgentService implements SowVoiceAgentService {
   }
 
   Future<void> _stopMicrophone() async {
+    _contextResumeTimer?.cancel();
+    _contextResumeTimer = null;
     _processorNode?.disconnect();
     _sourceNode?.disconnect();
     _muteNode?.disconnect();

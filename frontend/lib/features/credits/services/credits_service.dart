@@ -99,6 +99,28 @@ class CreditsService {
     return url;
   }
 
+  // ── Reconciliation ───────────────────────────────────────────────────────────
+
+  /// Asks the backend to reconcile any pending purchases against Paddle and
+  /// grant owed credits. Safe to call repeatedly. Returns the up-to-date wallet
+  /// state so the UI can settle on the truth even if the webhook was missed.
+  Future<({int balance, CreditSubscription? subscription, bool applied})>
+      syncPayments(String idToken) async {
+    final res = await _client.post(
+      _base.resolve('/api/credits/sync'),
+      headers: _auth(idToken),
+    );
+    _assert(res, 'syncPayments');
+    final data = _decode(res);
+    final sub = data['subscription'];
+    return (
+      balance: (data['balance'] as num?)?.toInt() ?? 0,
+      subscription:
+          sub == null ? null : CreditSubscription.fromJson(sub as Map<String, dynamic>),
+      applied: data['applied'] == true,
+    );
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   Map<String, String> _auth(String token) => {

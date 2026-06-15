@@ -1,11 +1,13 @@
 // Purpose: Boots the BuilderCam shell and wires GoRouter into MaterialApp.
 import 'dart:async';
 
+import 'package:app_links/app_links.dart';
 import 'package:buildercam/core/core.dart';
 import 'package:buildercam/core/services/app_update_service.dart';
 import 'package:buildercam/features/auth/auth_module.dart';
 import 'package:buildercam/features/credits/credits_module.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_web_plugins/url_strategy.dart';
@@ -82,11 +84,40 @@ class _RouterHostState extends State<_RouterHost> with WidgetsBindingObserver {
   late final _router = buildAppRouter(context.read<AuthController>());
   bool _appUpdaterLoaded = false;
 
+  // Handles `buildercam://` deep links — used by Paddle checkout to bring the
+  // user back into the app on the billing screen after paying.
+  final AppLinks _appLinks = AppLinks();
+  StreamSubscription<Uri>? _linkSub;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDeferredModules();
+    _initDeepLinks();
+  }
+
+  // Deep links are mobile-only; the web build returns via a normal URL.
+  Future<void> _initDeepLinks() async {
+    if (kIsWeb) return;
+    try {
+      final initial = await _appLinks.getInitialLink();
+      if (initial != null) _handleDeepLink(initial);
+    } catch (_) {
+      // No initial link / unsupported platform — ignore.
+    }
+    _linkSub = _appLinks.uriLinkStream.listen(
+      _handleDeepLink,
+      onError: (_) {},
+    );
+  }
+
+  void _handleDeepLink(Uri uri) {
+    if (uri.scheme != 'buildercam') return;
+    // buildercam://billing?paid=1 → host is "billing".
+    if (uri.host == 'billing' || uri.path.contains('billing')) {
+      _router.go('/billing?paid=1');
+    }
   }
 
   Future<void> _loadDeferredModules() async {
@@ -109,6 +140,7 @@ class _RouterHostState extends State<_RouterHost> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _linkSub?.cancel();
     _router.dispose();
     super.dispose();
   }
