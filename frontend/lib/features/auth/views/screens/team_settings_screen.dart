@@ -72,8 +72,6 @@ class _TeamSettingsScreenState extends State<TeamSettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       backgroundColor: AppColors.pageBackground,
       appBar: AppBar(
@@ -88,83 +86,92 @@ class _TeamSettingsScreenState extends State<TeamSettingsScreen> {
           ),
         ],
       ),
-      body: () {
-        if (_loading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (_error != null) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.s5),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.error_outline_rounded,
-                    color: AppColors.danger,
-                    size: 40,
-                  ),
-                  const SizedBox(height: AppSpacing.s3),
-                  Text(
-                    _error!,
-                    textAlign: TextAlign.center,
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: AppColors.danger),
-                  ),
-                  const SizedBox(height: AppSpacing.s4),
-                  ElevatedButton(
-                    onPressed: _load,
-                    child: const Text('Retry'),
-                  ),
-                ],
+      body: _buildBody(),
+    );
+  }
+
+  Widget _buildBody() {
+    final theme = Theme.of(context);
+
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (_error != null) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.s5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.error_outline_rounded,
+                color: AppColors.danger,
+                size: 40,
               ),
-            ),
-          );
-        }
-        if (_members.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.s5),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    Icons.group_outlined,
-                    size: 48,
-                    color: AppColors.bodySubtle,
-                  ),
-                  const SizedBox(height: AppSpacing.s3),
-                  Text(
-                    'No team members yet.',
-                    style: theme.textTheme.bodyMedium
-                        ?.copyWith(color: AppColors.bodyMuted),
-                  ),
-                  const SizedBox(height: AppSpacing.s1),
-                  Text(
-                    'Add team members from the Invite Team menu.',
-                    style: theme.textTheme.bodySmall
-                        ?.copyWith(color: AppColors.bodySubtle),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-        if (_projects.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.s5),
-              child: Text(
-                'No projects yet. Create a project first, then manage permissions here.',
+              const SizedBox(height: AppSpacing.s3),
+              Text(
+                _error!,
                 textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(color: AppColors.danger),
+              ),
+              const SizedBox(height: AppSpacing.s4),
+              ElevatedButton(
+                onPressed: _load,
+                child: const Text('Retry'),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_members.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.s5),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.group_outlined,
+                size: 48,
+                color: AppColors.bodySubtle,
+              ),
+              const SizedBox(height: AppSpacing.s3),
+              Text(
+                'No team members yet.',
                 style: theme.textTheme.bodyMedium
                     ?.copyWith(color: AppColors.bodyMuted),
               ),
-            ),
-          );
-        }
-        return ListView.separated(
+              const SizedBox(height: AppSpacing.s1),
+              Text(
+                'Add team members from the Invite Team menu.',
+                style: theme.textTheme.bodySmall
+                    ?.copyWith(color: AppColors.bodySubtle),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+    if (_projects.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(AppSpacing.s5),
+          child: Text(
+            'No projects yet. Create a project first, then manage permissions here.',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.bodyMedium
+                ?.copyWith(color: AppColors.bodyMuted),
+          ),
+        ),
+      );
+    }
+    return Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 800),
+        child: ListView.separated(
           padding: const EdgeInsets.all(AppSpacing.s4),
           itemCount: _members.length,
           separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.s4),
@@ -172,8 +179,8 @@ class _TeamSettingsScreenState extends State<TeamSettingsScreen> {
             member: _members[i],
             projects: _projects,
           ),
-        );
-      }(),
+        ),
+      ),
     );
   }
 }

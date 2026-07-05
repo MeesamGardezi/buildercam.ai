@@ -4,10 +4,7 @@ import { Router } from 'express';
 import { validateGenerateRequest } from './template.schema.js';
 import { generatePdf } from './pdf.service.js';
 import { verifyFirebaseToken } from '../../middleware/firebase-auth.middleware.js';
-import { requireCredits } from '../../middleware/require-credits.middleware.js';
 import { requirePermission } from '../../middleware/require-permission.middleware.js';
-import { CREDIT_COSTS, spendCredits } from '../credits/credits.service.js';
-import { resolveBillingUid } from '../credits/billing-uid.js';
 import {
   savePdfTemplate,
   listPdfTemplates,
@@ -24,17 +21,11 @@ router.post(
   '/templates/:templateId/generate',
   verifyFirebaseToken,
   requirePermission('canExport', { projectIdFrom: 'body' }),
-  requireCredits(CREDIT_COSTS.pdf_generation),
   async (req, res) => {
     try {
       const { elements, pageSize } = validateGenerateRequest(req.body);
       const sorted = [...elements].sort((a, b) => (a.zIndex ?? 0) - (b.zIndex ?? 0));
       const bytes = await generatePdf(sorted, pageSize);
-      // Deduct credits after successful PDF generation.
-      const billingUid = req.billingUid ?? (await resolveBillingUid(req));
-      spendCredits(billingUid, CREDIT_COSTS.pdf_generation, {
-        actionType: 'pdf_generation',
-      }).catch((err) => console.error('[credits] pdf_generation spend failed:', err));
       res.setHeader('Content-Type', 'application/pdf');
       res.setHeader('Content-Disposition', 'inline; filename="document.pdf"');
       res.send(Buffer.from(bytes));

@@ -56,3 +56,8 @@ __pycache__/
 # Miscellaneous
 history/
 .meteor/local/
+
+# Source archives (may contain .env / secrets — never commit these)
+backend.zip
+landing.zip
+*.zip

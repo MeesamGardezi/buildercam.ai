@@ -21,6 +21,8 @@ class CreditTransaction {
     required this.description,
     required this.createdAt,
     this.actionType,
+    this.projectId,
+    this.projectName,
   });
 
   factory CreditTransaction.fromJson(Map<String, dynamic> json) {
@@ -32,12 +34,14 @@ class CreditTransaction {
       description: json['description'] as String? ?? '',
       createdAt: json['createdAt'] as String?,
       actionType: json['actionType'] as String?,
+      projectId: json['projectId'] as String?,
+      projectName: json['projectName'] as String?,
     );
   }
 
   final String id;
 
-  /// 'purchase', 'subscription', or 'spend'
+  /// 'purchase', 'subscription', 'spend', or 'refund'
   final String type;
 
   /// Positive = credits added, negative = credits spent.
@@ -46,6 +50,8 @@ class CreditTransaction {
   final String description;
   final String? createdAt;
   final String? actionType;
+  final String? projectId;
+  final String? projectName;
 
   bool get isCredit => amount > 0;
 }
@@ -87,6 +93,7 @@ class CreditPack {
     required this.priceUsd,
     required this.label,
     required this.description,
+    this.appleProductId,
   });
 
   factory CreditPack.fromJson(Map<String, dynamic> json) {
@@ -96,6 +103,7 @@ class CreditPack {
       priceUsd: (json['priceUsd'] as num).toInt(),
       label: json['label'] as String,
       description: json['description'] as String,
+      appleProductId: json['appleProductId'] as String?,
     );
   }
 
@@ -106,6 +114,9 @@ class CreditPack {
   final int priceUsd;
   final String label;
   final String description;
+
+  /// App Store Connect product ID for this pack, if configured for Apple IAP.
+  final String? appleProductId;
 
   double get priceInDollars => priceUsd / 100.0;
 }
@@ -118,6 +129,7 @@ class SubscriptionPlan {
     required this.priceUsd,
     required this.label,
     required this.description,
+    this.appleProductId,
   });
 
   factory SubscriptionPlan.fromJson(Map<String, dynamic> json) {
@@ -127,6 +139,7 @@ class SubscriptionPlan {
       priceUsd: (json['priceUsd'] as num).toInt(),
       label: json['label'] as String,
       description: json['description'] as String,
+      appleProductId: json['appleProductId'] as String?,
     );
   }
 
@@ -135,6 +148,9 @@ class SubscriptionPlan {
   final int priceUsd;
   final String label;
   final String description;
+
+  /// App Store Connect product ID for this plan, if configured for Apple IAP.
+  final String? appleProductId;
 
   double get priceInDollars => priceUsd / 100.0;
 }

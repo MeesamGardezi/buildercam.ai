@@ -309,7 +309,12 @@ ul { list-style: none; }
   gap: 16px;
   align-items: center;
   flex-wrap: wrap;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+}
+.hero-trust {
+  font-size: 13px;
+  color: var(--text-subtle);
+  margin-bottom: 0;
 }
 .hero-download {
   display: flex;

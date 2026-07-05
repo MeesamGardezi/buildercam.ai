@@ -158,7 +158,6 @@ class _SowDocumentScreenState extends State<SowDocumentScreen> {
   Future<void> _openPdfEditor() async {
     if (_isGeneratingAiPdf || _isPdfDialogOpen) return;
 
-    // Always show the instructions dialog — instructions are optional.
     setState(() => _isPdfDialogOpen = true);
     final result = await showDialog<_AiPdfDialogResult>(
       context: context,
@@ -177,9 +176,6 @@ class _SowDocumentScreenState extends State<SowDocumentScreen> {
       return;
     }
 
-    // A SOW (content) template contributes its section text as instructions.
-    // A PDF (layout) template is sent whole so the AI preserves its branding,
-    // logos and structure. Plain instructions are forwarded as-is.
     final selectedTemplate = result.selectedTemplate;
     final selectedPdfTemplate = result.selectedPdfTemplate;
 
@@ -207,7 +203,6 @@ class _SowDocumentScreenState extends State<SowDocumentScreen> {
 
     setState(() => _isGeneratingAiPdf = true);
     try {
-      // generatePdfLayout throws if Gemini isn't configured or the call fails.
       final docData = await _pdfService.generatePdfLayout(
         projectId: projectId,
         sowText: _contentController.text,
@@ -340,7 +335,8 @@ class _SowDocumentScreenState extends State<SowDocumentScreen> {
                         _syncSectionsToContent();
                         setState(() => _parseSections());
                       },
-                      onRawTextChanged: () => setState(() => _parseSections()),
+                      onRawTextChanged: () =>
+                          setState(() => _parseSections()),
                       theme: theme,
                     )
                   : _DocumentViewer(
@@ -1503,7 +1499,6 @@ class _AiPdfDialogState extends State<_AiPdfDialog> {
               const SizedBox(height: AppSpacing.s4),
               const Divider(height: 1, color: AppColors.border),
               const SizedBox(height: AppSpacing.s4),
-              // ── Template picker (always shown) ───────────────────────────
               Text(
                 'Document template (optional)',
                 style: theme.textTheme.labelMedium
@@ -1545,7 +1540,6 @@ class _AiPdfDialogState extends State<_AiPdfDialog> {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
-                    // SOW text templates
                     ...widget.templates.map((t) {
                       final isSelected = _selectedTemplate?.id == t.id;
                       return FilterChip(
@@ -1575,7 +1569,6 @@ class _AiPdfDialogState extends State<_AiPdfDialog> {
                         ),
                       );
                     }),
-                    // PDF layout templates
                     ...widget.pdfTemplates.map((t) {
                       final id = t['id']?.toString() ?? '';
                       final name = t['name']?.toString() ?? '';
@@ -1613,7 +1606,6 @@ class _AiPdfDialogState extends State<_AiPdfDialog> {
               const SizedBox(height: AppSpacing.s4),
               const Divider(height: 1, color: AppColors.border),
               const SizedBox(height: AppSpacing.s4),
-              // ── Instructions field ──────────────────────────────────────
               Text(
                 'Special instructions',
                 style: theme.textTheme.labelMedium
@@ -1641,7 +1633,6 @@ class _AiPdfDialogState extends State<_AiPdfDialog> {
                     ?.copyWith(color: AppColors.bodyMuted),
               ),
               const SizedBox(height: AppSpacing.s5),
-              // Actions
               Row(
                 children: [
                   Expanded(

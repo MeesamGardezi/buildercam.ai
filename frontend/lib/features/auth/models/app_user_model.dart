@@ -83,6 +83,11 @@ class CompanySettings {
   const CompanySettings({
     this.categories = const [],
     this.notes = '',
+    this.logoUrl = '',
+    this.companyName = '',
+    this.address = '',
+    this.phone = '',
+    this.email = '',
   });
 
   factory CompanySettings.fromJson(Map<String, dynamic> json) {
@@ -92,9 +97,19 @@ class CompanySettings {
           ? rawCats.whereType<String>().toList(growable: false)
           : const [],
       notes: json['notes'] as String? ?? '',
+      logoUrl: json['logoUrl'] as String? ?? '',
+      companyName: json['companyName'] as String? ?? '',
+      address: json['address'] as String? ?? '',
+      phone: json['phone'] as String? ?? '',
+      email: json['email'] as String? ?? '',
     );
   }
 
   final List<String> categories;
   final String notes;
+  final String logoUrl;
+  final String companyName;
+  final String address;
+  final String phone;
+  final String email;
 }

@@ -1,0 +1,115 @@
+{
+  "identifier" : "8B6B8C1B-5C77-4C7B-9C7B-1C1B6B8C1B5C",
+  "nonRenewingSubscriptions" : [],
+  "products" : [
+    {
+      "displayPrice" : "17.50",
+      "familyShareable" : false,
+      "internalID" : "E9CE0E68-2AA8-47BB-84B4-A7EC8BA9756A",
+      "localizations" : [
+        {
+          "description" : "50 credits — never expire.",
+          "displayName" : "50 Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "ai.buildercam.credits.pack50",
+      "referenceName" : "50 Credits",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "45.00",
+      "familyShareable" : false,
+      "internalID" : "1CEE95BD-27D3-4DC6-8DAB-CDAF558C59E7",
+      "localizations" : [
+        {
+          "description" : "150 credits — never expire.",
+          "displayName" : "150 Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "ai.buildercam.credits.pack150",
+      "referenceName" : "150 Credits",
+      "type" : "Consumable"
+    },
+    {
+      "displayPrice" : "75.00",
+      "familyShareable" : false,
+      "internalID" : "CD7980CD-B2F9-4334-89B6-282C851DAAAE",
+      "localizations" : [
+        {
+          "description" : "300 credits — never expire.",
+          "displayName" : "300 Credits",
+          "locale" : "en_US"
+        }
+      ],
+      "productID" : "ai.buildercam.credits.pack300",
+      "referenceName" : "300 Credits",
+      "type" : "Consumable"
+    }
+  ],
+  "settings" : {
+    "_askToBuyEnabled" : false,
+    "_billingIssuesEnabled" : false,
+    "_disableDialogs" : false,
+    "_failTransactionsEnabled" : false,
+    "_locale" : "en_US",
+    "_storefront" : "USA",
+    "_storeKitErrors" : []
+  },
+  "subscriptionGroups" : [
+    {
+      "id" : "29BE5A43-7F78-4736-BB48-B2A6605AEBCD",
+      "localizations" : [],
+      "name" : "BuilderCam Credits",
+      "subscriptions" : [
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "49.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "D2101A37-F0D5-40BA-A854-FAA5136F828F",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "300 credits every month.",
+              "displayName" : "Starter",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ai.buildercam.sub.starter",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Starter",
+          "subscriptionGroupID" : "29BE5A43-7F78-4736-BB48-B2A6605AEBCD",
+          "type" : "RecurringSubscription"
+        },
+        {
+          "adHocOffers" : [],
+          "codeOffers" : [],
+          "displayPrice" : "99.00",
+          "familyShareable" : false,
+          "groupNumber" : 1,
+          "internalID" : "14A592E9-1995-465B-97BB-2F5A1C30B2F0",
+          "introductoryOffer" : null,
+          "localizations" : [
+            {
+              "description" : "700 credits every month.",
+              "displayName" : "Pro",
+              "locale" : "en_US"
+            }
+          ],
+          "productID" : "ai.buildercam.sub.pro",
+          "recurringSubscriptionPeriod" : "P1M",
+          "referenceName" : "Pro",
+          "subscriptionGroupID" : "29BE5A43-7F78-4736-BB48-B2A6605AEBCD",
+          "type" : "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version" : {
+    "major" : 3,
+    "minor" : 0
+  }
+}

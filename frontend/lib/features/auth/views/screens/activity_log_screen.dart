@@ -22,6 +22,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   bool _loading = true;
   bool _loadingMore = false;
   bool _loadingProjects = false;
+  bool _hasMore = true;
   String? _error;
   bool _isOwner = false;
   List<ActivityLogEntry> _logs = const [];
@@ -35,6 +36,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
   @override
   void initState() {
     super.initState();
+    _isOwner = context.read<AuthController>().user?.isOwner == true;
     _load();
     _loadProjects();
   }
@@ -59,6 +61,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
         _loading = true;
         _error = null;
         _logs = const [];
+        _hasMore = true;
       });
     } else {
       setState(() => _loadingMore = true);
@@ -66,7 +69,6 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
 
     try {
       final auth = context.read<AuthController>();
-      _isOwner = auth.user?.isOwner == true;
 
       final before = (!reset && _logs.isNotEmpty) ? _logs.last.timestamp : null;
       final page = await auth.getActivityLogs(
@@ -78,6 +80,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
       if (!mounted) return;
       setState(() {
         _logs = reset ? page : [..._logs, ...page];
+        _hasMore = page.length >= _pageSize;
       });
     } catch (e) {
       if (mounted) setState(() => _error = e.toString());
@@ -186,7 +189,10 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                 );
               }
 
-              return ListView.separated(
+              return Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 800),
+                  child: ListView.separated(
                 padding: const EdgeInsets.all(AppSpacing.s4),
                 itemCount: _logs.length + 1, // +1 for load-more footer
                 separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.s2),
@@ -198,7 +204,7 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                         child: Center(child: CircularProgressIndicator()),
                       );
                     }
-                    if (_logs.length >= _pageSize) {
+                    if (_hasMore) {
                       return Padding(
                         padding: const EdgeInsets.symmetric(
                           vertical: AppSpacing.s4,
@@ -218,6 +224,8 @@ class _ActivityLogScreenState extends State<ActivityLogScreen> {
                     showUser: _isOwner,
                   );
                 },
+              ),
+                ),
               );
             }(),
           ),

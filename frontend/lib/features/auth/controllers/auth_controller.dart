@@ -3,15 +3,12 @@ import 'dart:async';
 
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
-import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/activity_log_model.dart';
 import '../models/app_user_model.dart';
 import '../models/member_permission_model.dart';
 import '../services/auth_service.dart';
-
-enum GoogleSignInOutcome { success, newUser, needsLinking, cancelled }
 
 enum AuthStatus {
   /// Initial state — waiting for Firebase to report auth state.
@@ -34,9 +31,6 @@ class AuthController extends ChangeNotifier {
 
   static const String _guestKey = 'auth_local_guest';
 
-  OAuthCredential? _pendingGoogleCredential;
-  String? _pendingGoogleEmail;
-
   AuthStatus _status = AuthStatus.unknown;
   AppUser? _user;
   String? _errorMessage;
@@ -45,7 +39,6 @@ class AuthController extends ChangeNotifier {
   AuthStatus get status => _status;
   AppUser? get user => _user;
   String? get errorMessage => _errorMessage;
-  String? get pendingGoogleEmail => _pendingGoogleEmail;
 
   /// Returns the current Firebase ID token, or null if not signed in.
   Future<String?> getIdToken() {
@@ -95,79 +88,6 @@ class AuthController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<GoogleSignInOutcome> signInWithGoogle() async {
-    _clearError();
-    try {
-      final googleAccount = await GoogleSignIn.instance.authenticate();
-      final idToken = googleAccount.authentication.idToken;
-      final credential = GoogleAuthProvider.credential(idToken: idToken);
-
-      try {
-        final userCredential =
-            await FirebaseAuth.instance.signInWithCredential(credential);
-        final isNewUser =
-            userCredential.additionalUserInfo?.isNewUser ?? false;
-        return isNewUser
-            ? GoogleSignInOutcome.newUser
-            : GoogleSignInOutcome.success;
-      } on FirebaseAuthException catch (e) {
-        if (e.code == 'account-exists-with-different-credential') {
-          _pendingGoogleCredential = credential;
-          _pendingGoogleEmail = e.email;
-          return GoogleSignInOutcome.needsLinking;
-        }
-        rethrow;
-      }
-    } on GoogleSignInException catch (e) {
-      if (e.code == GoogleSignInExceptionCode.canceled ||
-          e.code == GoogleSignInExceptionCode.interrupted) {
-        return GoogleSignInOutcome.cancelled;
-      }
-      _setError(e.description ?? 'Google Sign-In failed.');
-      return GoogleSignInOutcome.cancelled;
-    } on FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e));
-      rethrow;
-    }
-  }
-
-  /// Signs in with email/password and links the pending Google credential.
-  Future<void> linkWithPassword(String password) async {
-    _clearError();
-    final email = _pendingGoogleEmail;
-    final googleCred = _pendingGoogleCredential;
-    if (email == null || googleCred == null) {
-      throw StateError('No pending Google credential to link.');
-    }
-    try {
-      final userCredential = await FirebaseAuth.instance
-          .signInWithEmailAndPassword(email: email, password: password);
-      await userCredential.user?.linkWithCredential(googleCred);
-      _pendingGoogleCredential = null;
-      _pendingGoogleEmail = null;
-    } on FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e));
-      rethrow;
-    }
-  }
-
-  /// Adds an email/password credential to the currently signed-in Google user.
-  Future<void> addPasswordToAccount(String password) async {
-    _clearError();
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.email == null) throw StateError('Not signed in.');
-    try {
-      final credential = EmailAuthProvider.credential(
-        email: user.email!,
-        password: password,
-      );
-      await user.linkWithCredential(credential);
-    } on FirebaseAuthException catch (e) {
-      _setError(_mapFirebaseError(e));
-      rethrow;
-    }
-  }
-
   Future<void> sendPasswordResetEmail(String email) async {
     _clearError();
     try {
@@ -201,19 +121,7 @@ class AuthController extends ChangeNotifier {
           .listen(_handleAuthChange);
       return;
     }
-    // Sign out of Firebase first — this drives the router redirect via the
-    // authStateChanges listener, so navigation happens even if Google
-    // sign-out hangs or throws (e.g. when GoogleSignIn was never initialised
-    // because the user signed in with email/password).
     await _authService.signOut();
-    try {
-      await GoogleSignIn.instance
-          .signOut()
-          .timeout(const Duration(seconds: 2));
-    } catch (_) {
-      // User may not have signed in with Google, plugin not initialised,
-      // or call timed out — ignore; Firebase sign-out already succeeded.
-    }
   }
 
   // ── Registration (new company owner) ──────────────────────────────────────
@@ -488,13 +396,14 @@ class AuthController extends ChangeNotifier {
       _status = AuthStatus.noCompany;
       _user = null;
     } else {
-      // Fetch the full profile so we get hasSeenWelcome from Firestore.
-      bool hasSeenWelcome = true; // safe default for existing users
+      bool hasSeenWelcome = true;
+      bool isVip = false;
       try {
         final idToken = await firebaseUser.getIdToken();
         if (idToken != null) {
           final profile = await _authService.fetchMe(idToken);
           hasSeenWelcome = profile?['hasSeenWelcome'] as bool? ?? true;
+          isVip = profile?['isVip'] as bool? ?? false;
         }
       } catch (_) {
         // Non-fatal — treat as already seen so we don't block login.
@@ -507,6 +416,7 @@ class AuthController extends ChangeNotifier {
         displayName: firebaseUser.displayName ?? '',
         companyId: companyId,
         role: role,
+        isVip: isVip,
         hasSeenWelcome: hasSeenWelcome,
       );
     }
@@ -543,6 +453,7 @@ class AuthController extends ChangeNotifier {
       );
       notifyListeners();
     }
+
   }
 
   void _clearError() {
@@ -564,8 +475,6 @@ class AuthController extends ChangeNotifier {
       'email-already-in-use' => 'An account with this email already exists.',
       'account-exists-with-different-credential' =>
         'An account already exists with this email.',
-      'credential-already-in-use' =>
-        'This Google account is already linked to another account.',
       'weak-password' => 'Password must be at least 6 characters.',
       'invalid-email' => 'Please enter a valid email address.',
       'too-many-requests' => 'Too many attempts. Please try again later.',

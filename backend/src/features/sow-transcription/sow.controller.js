@@ -1,6 +1,6 @@
 // Purpose: Adapts SOW HTTP requests into service calls and consistent JSON responses.
 import { sowService } from './sow.service.js';
-import { spendCredits, CREDIT_COSTS } from '../credits/credits.service.js';
+import { spendCredits, addCredits, CREDIT_COSTS } from '../credits/credits.service.js';
 import { resolveBillingUid } from '../credits/billing-uid.js';
 
 class SowController {
@@ -94,11 +94,15 @@ class SowController {
         const isVideo = Array.isArray(frameUrls) && frameUrls.length > 0;
         const transcriptCost = isVideo ? CREDIT_COSTS.transcript_video : CREDIT_COSTS.transcript;
         const billingUid = await resolveBillingUid(req);
-        spendCredits(billingUid, transcriptCost, {
-          actionType: isVideo ? 'transcript_video' : 'transcript',
-          projectId: req.params.projectId,
-          companyId: req.user.companyId,
-        }).catch((err) => console.error('[credits] transcript spend failed:', err));
+        try {
+          await spendCredits(billingUid, transcriptCost, {
+            actionType: isVideo ? 'transcript_video' : 'transcript',
+            projectId: req.params.projectId,
+            companyId: req.user.companyId,
+          });
+        } catch (err) {
+          console.error('[credits] transcript spend failed:', err);
+        }
       }
       return res.status(created ? 201 : 200).json({ success: true, transcript });
     } catch (error) {
@@ -160,20 +164,41 @@ class SowController {
         includeMaterials: includeMaterials !== false,
         includeEstimate: includeEstimate !== false,
       };
-      const sow = await sowService.generateSow(
-        projectId,
-        transcriptIds,
-        req.user.companyId,
-        sowSettings,
-      );
-      // Deduct 3 credits for every AI SOW generation.
+
+      // Fetch project name for usage tracking, then deduct credits.
       const billingUid = await resolveBillingUid(req);
-      spendCredits(billingUid, CREDIT_COSTS.sow_generation, {
-        actionType: 'sow_generation',
-        projectId,
-        companyId: req.user.companyId,
-      }).catch((err) => console.error('[credits] sow_generation spend failed:', err));
-      return res.json({ success: true, sow });
+      const _project = await sowService.getProject(projectId, req.user.companyId).catch(() => null);
+      let creditsDeducted = false;
+      try {
+        creditsDeducted = await spendCredits(billingUid, CREDIT_COSTS.sow_generation, {
+          actionType: 'sow_generation',
+          projectId,
+          projectName: _project?.name ?? null,
+          companyId: req.user.companyId,
+        });
+      } catch (creditErr) {
+        return res.status(402).json({ success: false, message: creditErr.message });
+      }
+
+      try {
+        const sow = await sowService.generateSow(
+          projectId,
+          transcriptIds,
+          req.user.companyId,
+          sowSettings,
+        );
+        return res.json({ success: true, sow });
+      } catch (error) {
+        // Refund credits if the generation failed.
+        if (creditsDeducted) {
+          await addCredits(billingUid, CREDIT_COSTS.sow_generation, {
+            description: 'Refund: SOW generation failed',
+            type: 'refund',
+            companyId: req.user.companyId,
+          }).catch((e) => console.error('[credits] sow_generation refund failed:', e));
+        }
+        return this._handleError(req, res, error, 'generateSow');
+      }
     } catch (error) {
       return this._handleError(req, res, error, 'generateSow');
     }
@@ -221,11 +246,15 @@ class SowController {
       });
       if (created) {
         const billingUid = await resolveBillingUid(req);
-        spendCredits(billingUid, CREDIT_COSTS.sow_document, {
-          actionType: 'sow_document',
-          projectId,
-          companyId: req.user.companyId,
-        }).catch((err) => console.error('[credits] sow_document spend failed:', err));
+        try {
+          await spendCredits(billingUid, CREDIT_COSTS.sow_document, {
+            actionType: 'sow_document',
+            projectId,
+            companyId: req.user.companyId,
+          });
+        } catch (err) {
+          console.error('[credits] sow_document spend failed:', err);
+        }
       }
       return res.status(created ? 201 : 200).json({ success: true, document });
     } catch (error) {
@@ -267,24 +296,41 @@ class SowController {
         return res.status(400).json({ success: false, message: 'sowText is required.' });
       }
 
-      const layout = await sowService.generatePdfLayout({
-        sowText: String(sowText),
-        instructions: typeof instructions === 'string' ? instructions : '',
-        projectName: String(projectName || ''),
-        clientName: String(clientName || ''),
-        siteLocation: String(siteLocation || ''),
-        pdfTemplate: pdfTemplate && typeof pdfTemplate === 'object' ? pdfTemplate : null,
-      });
-
-      // Deduct credits for the AI layout generation (same cost as PDF render).
+      // Deduct credits before generation; gate on insufficient balance.
       const billingUid = await resolveBillingUid(req);
-      spendCredits(billingUid, CREDIT_COSTS.pdf_generation, {
-        actionType: 'pdf_generation',
-        projectId,
-        companyId: req.user.companyId,
-      }).catch((err) => console.error('[credits] pdf_generation (ai layout) spend failed:', err));
+      let creditsDeducted = false;
+      try {
+        creditsDeducted = await spendCredits(billingUid, CREDIT_COSTS.pdf_generation, {
+          actionType: 'pdf_generation',
+          projectId,
+          projectName: projectName || null,
+          companyId: req.user.companyId,
+        });
+      } catch (creditErr) {
+        return res.status(402).json({ success: false, message: creditErr.message });
+      }
 
-      return res.json({ success: true, ...layout });
+      try {
+        const layout = await sowService.generatePdfLayout({
+          sowText: String(sowText),
+          instructions: typeof instructions === 'string' ? instructions : '',
+          projectName: String(projectName || ''),
+          clientName: String(clientName || ''),
+          siteLocation: String(siteLocation || ''),
+          pdfTemplate: pdfTemplate && typeof pdfTemplate === 'object' ? pdfTemplate : null,
+        });
+        return res.json({ success: true, ...layout });
+      } catch (error) {
+        // Refund credits if the generation failed.
+        if (creditsDeducted) {
+          await addCredits(billingUid, CREDIT_COSTS.pdf_generation, {
+            description: 'Refund: PDF layout generation failed',
+            type: 'refund',
+            companyId: req.user.companyId,
+          }).catch((e) => console.error('[credits] pdf_generation refund failed:', e));
+        }
+        return this._handleError(req, res, error, 'generatePdfLayout');
+      }
     } catch (error) {
       return this._handleError(req, res, error, 'generatePdfLayout');
     }
@@ -329,11 +375,15 @@ class SowController {
       });
       if (created) {
         const billingUid = await resolveBillingUid(req);
-        spendCredits(billingUid, CREDIT_COSTS.pdf_document, {
-          actionType: 'pdf_document',
-          projectId,
-          companyId: req.user.companyId,
-        }).catch((err) => console.error('[credits] pdf_document spend failed:', err));
+        try {
+          await spendCredits(billingUid, CREDIT_COSTS.pdf_document, {
+            actionType: 'pdf_document',
+            projectId,
+            companyId: req.user.companyId,
+          });
+        } catch (err) {
+          console.error('[credits] pdf_document spend failed:', err);
+        }
       }
       return res.status(created ? 201 : 200).json({ success: true, document });
     } catch (error) {

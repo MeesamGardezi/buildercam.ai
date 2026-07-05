@@ -1,8 +1,10 @@
-// Purpose: Lets the company owner manage trade categories and AI notes
+// Purpose: Lets the company owner manage company profile, trade categories and AI notes
 // that are injected into every SOW and PDF generation request.
 import 'package:buildercam/core/core.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../controllers/auth_controller.dart';
@@ -16,12 +18,18 @@ class CompanySettingsScreen extends StatefulWidget {
 }
 
 class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
+  final _companyNameController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _emailController = TextEditingController();
   final _notesController = TextEditingController();
   final _addCategoryController = TextEditingController();
 
   List<String> _categories = [];
+  String _logoUrl = '';
   bool _loading = true;
   bool _saving = false;
+  bool _uploadingLogo = false;
   String? _error;
 
   static const List<String> _suggestions = [
@@ -55,6 +63,10 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
   @override
   void dispose() {
+    _companyNameController.dispose();
+    _addressController.dispose();
+    _phoneController.dispose();
+    _emailController.dispose();
     _notesController.dispose();
     _addCategoryController.dispose();
     super.dispose();
@@ -74,10 +86,57 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
       setState(() {
         _categories = List<String>.from(settings.categories);
         _notesController.text = settings.notes;
+        _logoUrl = settings.logoUrl;
+        _companyNameController.text = settings.companyName;
+        _addressController.text = settings.address;
+        _phoneController.text = settings.phone;
+        _emailController.text = settings.email;
         _loading = false;
       });
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _pickAndUploadLogo() async {
+    final auth = context.read<AuthController>();
+    final companyId = auth.user?.companyId;
+    if (companyId == null) return;
+
+    final picker = ImagePicker();
+    final picked = await picker.pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 512,
+      maxHeight: 512,
+      imageQuality: 90,
+    );
+    if (picked == null) return;
+
+    setState(() => _uploadingLogo = true);
+    try {
+      final bytes = await picked.readAsBytes();
+      final ext = picked.name.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+      final ref = FirebaseStorage.instance
+          .ref('companies/$companyId/logo.$ext');
+      final metadata = SettableMetadata(
+        contentType: ext == 'png' ? 'image/png' : 'image/jpeg',
+      );
+      await ref.putData(bytes, metadata);
+      final url = await ref.getDownloadURL();
+      if (!mounted) return;
+      setState(() => _logoUrl = url);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Logo upload failed: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppColors.danger,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _uploadingLogo = false);
     }
   }
 
@@ -90,6 +149,11 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
       await AuthService().updateCompanySettings(
         categories: _categories,
         notes: _notesController.text.trim(),
+        logoUrl: _logoUrl,
+        companyName: _companyNameController.text.trim(),
+        address: _addressController.text.trim(),
+        phone: _phoneController.text.trim(),
+        email: _emailController.text.trim(),
         idToken: token,
       );
       if (!mounted) return;
@@ -144,12 +208,145 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
               ? _ErrorBody(error: _error!, onRetry: _load)
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(AppSpacing.s5),
-                  child: ConstrainedBox(
+                  child: Center(
+                    child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 640),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // ── Section header ──────────────────────────────
+                        // ── Company profile ──────────────────────────────────
+                        Text(
+                          'Company profile',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.s1),
+                        Text(
+                          'Your logo and details are automatically filled into the default PDF template.',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: AppColors.bodyMuted,
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.s3),
+
+                        // ── Logo upload ──────────────────────────────────────
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            _LogoPreview(
+                              logoUrl: _logoUrl,
+                              uploading: _uploadingLogo,
+                            ),
+                            const SizedBox(width: AppSpacing.s3),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                OutlinedButton.icon(
+                                  onPressed: _uploadingLogo ? null : _pickAndUploadLogo,
+                                  icon: const Icon(Icons.upload_rounded, size: 16),
+                                  label: Text(_logoUrl.isEmpty ? 'Upload logo' : 'Replace logo'),
+                                ),
+                                if (_logoUrl.isNotEmpty) ...[
+                                  const SizedBox(height: AppSpacing.s1),
+                                  TextButton(
+                                    onPressed: () => setState(() => _logoUrl = ''),
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: AppColors.danger,
+                                      padding: EdgeInsets.zero,
+                                      minimumSize: Size.zero,
+                                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                                    ),
+                                    child: const Text('Remove logo'),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: AppSpacing.s3),
+
+                        // ── Company name ─────────────────────────────────────
+                        TextField(
+                          controller: _companyNameController,
+                          decoration: AppInputs.standard(
+                            labelText: 'Company name',
+                            hintText: 'e.g. ABC Builders Pty Ltd',
+                          ),
+                          textCapitalization: TextCapitalization.words,
+                        ),
+                        const SizedBox(height: AppSpacing.s3),
+
+                        // ── Address ──────────────────────────────────────────
+                        TextField(
+                          controller: _addressController,
+                          decoration: AppInputs.standard(
+                            labelText: 'Address',
+                            hintText: 'e.g. 123 Builder St, Sydney NSW 2000',
+                          ),
+                        ),
+                        const SizedBox(height: AppSpacing.s3),
+
+                        // ── Phone & email ────────────────────────────────────
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final narrow = constraints.maxWidth < 480;
+                            if (narrow) {
+                              return Column(
+                                children: [
+                                  TextField(
+                                    controller: _phoneController,
+                                    decoration: AppInputs.standard(
+                                      labelText: 'Phone',
+                                      hintText: 'e.g. (02) 1234 5678',
+                                    ),
+                                    keyboardType: TextInputType.phone,
+                                  ),
+                                  const SizedBox(height: AppSpacing.s3),
+                                  TextField(
+                                    controller: _emailController,
+                                    decoration: AppInputs.standard(
+                                      labelText: 'Email',
+                                      hintText: 'e.g. info@company.com.au',
+                                    ),
+                                    keyboardType: TextInputType.emailAddress,
+                                  ),
+                                ],
+                              );
+                            }
+                            return Row(
+                              children: [
+                                Expanded(
+                                  child: TextField(
+                                    controller: _phoneController,
+                                    decoration: AppInputs.standard(
+                                      labelText: 'Phone',
+                                      hintText: 'e.g. (02) 1234 5678',
+                                    ),
+                                    keyboardType: TextInputType.phone,
+                                  ),
+                                ),
+                                const SizedBox(width: AppSpacing.s3),
+                                Expanded(
+                                  child: TextField(
+                                    controller: _emailController,
+                                    decoration: AppInputs.standard(
+                                      labelText: 'Email',
+                                      hintText: 'e.g. info@company.com.au',
+                                    ),
+                                    keyboardType: TextInputType.emailAddress,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+
+                        const SizedBox(height: AppSpacing.s6),
+                        const Divider(),
+                        const SizedBox(height: AppSpacing.s4),
+
+                        // ── Section header ──────────────────────────────────
                         Text(
                           'Trade categories',
                           style: theme.textTheme.titleMedium?.copyWith(
@@ -165,7 +362,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         ),
                         const SizedBox(height: AppSpacing.s3),
 
-                        // ── Active categories ────────────────────────────
+                        // ── Active categories ────────────────────────────────
                         if (_categories.isNotEmpty) ...[
                           Wrap(
                             spacing: AppSpacing.s2,
@@ -193,7 +390,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                           const SizedBox(height: AppSpacing.s3),
                         ],
 
-                        // ── Add category input ───────────────────────────
+                        // ── Add category input ───────────────────────────────
                         Row(
                           children: [
                             Expanded(
@@ -217,7 +414,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         ),
                         const SizedBox(height: AppSpacing.s3),
 
-                        // ── Suggestions ──────────────────────────────────
+                        // ── Suggestions ──────────────────────────────────────
                         Text(
                           'Suggestions',
                           style: theme.textTheme.labelMedium?.copyWith(
@@ -250,7 +447,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                         const Divider(),
                         const SizedBox(height: AppSpacing.s4),
 
-                        // ── AI notes ─────────────────────────────────────
+                        // ── AI notes ─────────────────────────────────────────
                         Text(
                           'AI notes',
                           style: theme.textTheme.titleMedium?.copyWith(
@@ -278,7 +475,7 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
 
                         const SizedBox(height: AppSpacing.s6),
 
-                        // ── Save button ──────────────────────────────────
+                        // ── Save button ──────────────────────────────────────
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton(
@@ -299,6 +496,59 @@ class _CompanySettingsScreenState extends State<CompanySettingsScreen> {
                     ),
                   ),
                 ),
+              ),
+    );
+  }
+}
+
+class _LogoPreview extends StatelessWidget {
+  const _LogoPreview({required this.logoUrl, required this.uploading});
+  final String logoUrl;
+  final bool uploading;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        border: Border.all(color: AppColors.border),
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AppSpacing.radiusMd - 1),
+        child: uploading
+            ? const Center(child: CircularProgressIndicator(strokeWidth: 2))
+            : logoUrl.isNotEmpty
+                ? Image.network(
+                    logoUrl,
+                    fit: BoxFit.contain,
+                    errorBuilder: (_, __, ___) => const _LogoPlaceholder(),
+                  )
+                : const _LogoPlaceholder(),
+      ),
+    );
+  }
+}
+
+class _LogoPlaceholder extends StatelessWidget {
+  const _LogoPlaceholder();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.business_rounded, color: AppColors.bodyMuted, size: 28),
+        const SizedBox(height: 4),
+        Text(
+          'No logo',
+          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+            color: AppColors.bodyMuted,
+          ),
+        ),
+      ],
     );
   }
 }

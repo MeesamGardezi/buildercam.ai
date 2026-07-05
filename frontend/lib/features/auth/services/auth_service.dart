@@ -194,11 +194,24 @@ class AuthService {
     required List<String> categories,
     required String notes,
     required String idToken,
+    String logoUrl = '',
+    String companyName = '',
+    String address = '',
+    String phone = '',
+    String email = '',
   }) async {
     final response = await _client.put(
       _baseUri.resolve('/api/auth/company-settings'),
       headers: _headers(idToken),
-      body: jsonEncode({'categories': categories, 'notes': notes}),
+      body: jsonEncode({
+        'categories': categories,
+        'notes': notes,
+        'logoUrl': logoUrl,
+        'companyName': companyName,
+        'address': address,
+        'phone': phone,
+        'email': email,
+      }),
     );
     _assertSuccess(response, 'updateCompanySettings');
     final payload = _decode(response);

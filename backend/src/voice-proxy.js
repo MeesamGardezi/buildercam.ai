@@ -4,6 +4,16 @@
 import { WebSocketServer, WebSocket } from 'ws';
 
 import { getFirebaseAdmin } from './config/firebase-admin.js';
+import {
+  spendCredits,
+  hasSufficientCredits,
+  isVipUser,
+  VOICE_SESSION_MINUTES_PER_CREDIT,
+} from './features/credits/credits.service.js';
+import { resolveBillingUidForUser } from './features/credits/billing-uid.js';
+
+// Sessions shorter than this are not billed (handles instant Gemini errors).
+const MIN_BILLABLE_SECONDS = 10;
 
 const VOICE_PROXY_PATH = '/voice-agent';
 
@@ -48,17 +58,43 @@ export function initVoiceProxy(httpServer) {
       return;
     }
 
+    // Resolve the wallet owner (team members bill to their company owner).
+    const billingUid = await resolveBillingUidForUser(user);
+
+    // Gate on credit balance unless the wallet owner is a VIP.
+    if (!(await isVipUser(billingUid))) {
+      if (!(await hasSufficientCredits(billingUid, 1))) {
+        socket.write('HTTP/1.1 402 Payment Required\r\n\r\n');
+        socket.destroy();
+        return;
+      }
+    }
+
     wss.handleUpgrade(req, socket, head, (client) => {
-      console.log(`[VoiceProxy] session opened for uid=${user.uid}`);
-      pipeToGemini(client, apiKey, user.uid);
+      console.log(`[VoiceProxy] session opened for uid=${user.uid} billingUid=${billingUid}`);
+      pipeToGemini(client, apiKey, user.uid, billingUid, user.companyId);
     });
   });
 
   console.log(`[VoiceProxy] listening on ${VOICE_PROXY_PATH}`);
 }
 
-function pipeToGemini(client, apiKey, uid) {
+function pipeToGemini(client, apiKey, uid, billingUid, companyId) {
   const upstream = new WebSocket(GEMINI_LIVE_URL(apiKey));
+  const sessionStart = Date.now();
+  let billed = false;
+
+  function billSession() {
+    if (billed) return;
+    billed = true;
+    const durationSeconds = (Date.now() - sessionStart) / 1000;
+    if (durationSeconds < MIN_BILLABLE_SECONDS) return;
+    const credits = Math.ceil(durationSeconds / (VOICE_SESSION_MINUTES_PER_CREDIT * 60));
+    spendCredits(billingUid, credits, {
+      actionType: 'voice_session',
+      companyId,
+    }).catch((err) => console.error(`[VoiceProxy] billing failed for uid=${uid}:`, err));
+  }
 
   // Frames the client sends before the Gemini socket is open (typically the
   // setup message) are buffered and flushed on open.
@@ -85,10 +121,12 @@ function pipeToGemini(client, apiKey, uid) {
 
   upstream.on('close', (code, reason) => {
     console.log(`[VoiceProxy] gemini closed (${code}) for uid=${uid}`);
+    billSession();
     client.close(sanitizeCloseCode(code), reason.toString().slice(0, 120));
   });
   client.on('close', () => {
     console.log(`[VoiceProxy] client closed for uid=${uid}`);
+    billSession();
     if (upstream.readyState === WebSocket.OPEN || upstream.readyState === WebSocket.CONNECTING) {
       upstream.close();
     }

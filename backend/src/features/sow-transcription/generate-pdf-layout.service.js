@@ -80,6 +80,11 @@ function _partitionTemplateElements(elements) {
 /**
  * Builds the Gemini prompt instructing it to emit a full elements[] array.
  */
+function _formatDate(d) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 function _buildLayoutPrompt({
   sowText,
   projectName,
@@ -90,6 +95,7 @@ function _buildLayoutPrompt({
   templateLayout,
 }) {
   const lines = [];
+  const today = _formatDate(new Date());
 
   lines.push(
     'You are a professional document layout engine. You produce print-ready PDF',
@@ -108,6 +114,9 @@ function _buildLayoutPrompt({
     `  Client  : ${clientName || ''}`,
   );
   if (siteLocation) lines.push(`  Site    : ${siteLocation}`);
+  lines.push(`  Date    : ${today}`,
+    '  (Use this exact date wherever a document date, issue date, or "Date:" field appears.)',
+  );
 
   lines.push('', 'SOW CONTENT (lay this out in full — do not omit sections):', '', sowText.trim());
 

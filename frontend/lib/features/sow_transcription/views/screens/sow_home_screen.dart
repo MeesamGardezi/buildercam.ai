@@ -91,6 +91,7 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
 
   List<SowTemplateModel> _templates = <SowTemplateModel>[];
   List<Map<String, dynamic>> _pdfTemplates = <Map<String, dynamic>>[];
+  CompanySettings? _companySettings;
   bool _templatesLoading = false;
 
   /// Tracks the active mobile tab ('record' or 'transcripts').
@@ -118,6 +119,9 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
   PdfDocumentModel? _currentPdfDoc;
   bool _pdfDocLoading = false;
 
+  // ── SOW Settings overlay ──────────────────────────────────────────────────
+  bool _showSowSettings = false;
+
   /// When non-null, the editor is in "edit PDF template" mode.
   /// [onSave] is hidden; toolbar shows "Update Template" instead.
   Map<String, dynamic>? _editingPdfTemplate;
@@ -125,6 +129,35 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
   /// Name entered in the "New PDF" dialog before the editor opens.
   /// Used so the first save doesn't re-prompt for a name.
   String? _pendingNewPdfName;
+
+  /// Built-in starter template prepended to every company's template list.
+  /// Uses a synthetic id that is never stored — the editor creates a brand-new
+  /// Firestore document on first save so the built-in entry is never mutated.
+  Map<String, dynamic> get _builtInDefaultTemplate {
+    final settings = _companySettings;
+    String? contact;
+    if (settings != null) {
+      final parts = <String>[];
+      if (settings.address.isNotEmpty) parts.add(settings.address);
+      final contactLine = [
+        if (settings.email.isNotEmpty) settings.email,
+        if (settings.phone.isNotEmpty) settings.phone,
+      ].join('  |  ');
+      if (contactLine.isNotEmpty) parts.add(contactLine);
+      if (parts.isNotEmpty) contact = parts.join('\n');
+    }
+    return {
+      'id': 'builtin-default',
+      'name': 'BuilderCam Default',
+      'isBuiltIn': true,
+      'pdfJson': PdfDocumentData.withDefaultLayout(
+        name: 'BuilderCam Default',
+        companyName: settings?.companyName,
+        companyContact: contact,
+        logoUrl: settings?.logoUrl,
+      ).toJson(),
+    };
+  }
 
   /// Incremented when returning from a SOW doc so _MainWorkspacePanel
   /// recreates and reloads the saved-SOW list.
@@ -151,6 +184,9 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
       _pdfDocLoading = true;
       unawaited(_loadPdfDocument(_currentPdfDocId!));
     }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) context.read<CreditsController>().refreshBalance();
+    });
   }
 
   // Called by GoRouter when the URL changes but the same widget instance is
@@ -591,8 +627,9 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
       builder: (context, constraints) {
         final screenWidth = constraints.maxWidth;
         final isPhone = screenWidth < 760;
+        final isNarrowTablet = screenWidth >= 760 && screenWidth < 960;
         final isTablet = screenWidth >= 760 && screenWidth < 1200;
-        final sidebarWidth = isTablet ? 320.0 : 360.0;
+        final sidebarWidth = isNarrowTablet ? 260.0 : (isTablet ? 300.0 : 360.0);
 
         if (isPhone) {
           // On mobile, SOW doc / PDF editor replace the whole layout.
@@ -613,7 +650,7 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
                 tokenProvider: widget.tokenProvider,
                 onClose: _exitTemplateEditor,
                 onTemplateSaved: _loadTemplates,
-                initialTemplateId: tpl['id']?.toString(),
+                initialTemplateId: tpl['isBuiltIn'] == true ? null : tpl['id']?.toString(),
               ),
             );
           }
@@ -781,6 +818,7 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
           onEditPdfTemplate: _editPdfTemplate,
           onCreateTemplate: _createTemplate,
           embedded: true,
+          onOpenSowSettings: () => setState(() => _showSowSettings = true),
         );
 
         return Scaffold(
@@ -788,15 +826,29 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
+                SizedBox(
                   width: sidebarWidth,
-                  decoration: const BoxDecoration(
-                    color: AppColors.surface,
-                    border: Border(
-                      right: BorderSide(color: AppColors.borderStrong),
-                    ),
+                  child: Stack(
+                    children: [
+                      Positioned.fill(
+                        child: Container(
+                          decoration: const BoxDecoration(
+                            color: AppColors.surface,
+                            border: Border(
+                              right: BorderSide(color: AppColors.borderStrong),
+                            ),
+                          ),
+                          child: sidebar,
+                        ),
+                      ),
+                      if (_showSowSettings)
+                        Positioned.fill(
+                          child: _SowSettingsOverlay(
+                            onClose: () => setState(() => _showSowSettings = false),
+                          ),
+                        ),
+                    ],
                   ),
-                  child: sidebar,
                 ),
                 Expanded(
                   child: _buildDesktopMainPanel(),
@@ -830,7 +882,7 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
           tokenProvider: widget.tokenProvider,
           onClose: _exitTemplateEditor,
           onTemplateSaved: _loadTemplates,
-          initialTemplateId: tpl['id']?.toString(),
+          initialTemplateId: tpl['isBuiltIn'] == true ? null : tpl['id']?.toString(),
         ),
       );
     }
@@ -939,12 +991,10 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
         _ShellTopBar(
           projectCount: _projects.length,
           selectedProject: _selectedProject,
-          creatingProject: _creatingProject,
           onRefresh: () {
             _loadProjects();
             _loadTemplates();
           },
-          onCreateProject: _openCreateProjectDialog,
         ),
         const Divider(height: 1),
         Expanded(
@@ -1223,17 +1273,22 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
   Future<void> _loadTemplates() async {
     setState(() => _templatesLoading = true);
     try {
+      final auth = context.read<AuthController>();
+      final token = await auth.getIdToken();
       final results = await Future.wait<dynamic>([
         _backendService.fetchTemplates(),
         _backendService.fetchPdfTemplates().catchError(
           (_) => <Map<String, dynamic>>[],
         ),
+        if (token != null)
+          AuthService().fetchCompanySettings(token).catchError((_) => const CompanySettings()),
       ]);
       if (!mounted) return;
       final pdfTemplates = results[1] as List<Map<String, dynamic>>;
+      if (results.length > 2) _companySettings = results[2] as CompanySettings;
       setState(() {
         _templates = results[0] as List<SowTemplateModel>;
-        _pdfTemplates = pdfTemplates;
+        _pdfTemplates = [_builtInDefaultTemplate, ...pdfTemplates];
         // Restore template editor after a browser refresh.
         if (_editingPdfTemplate == null &&
             widget.initialEditingTemplateId != null) {
@@ -1252,6 +1307,11 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
   }
 
   Future<void> _deletePdfTemplate(String templateId) async {
+    // Never send a DELETE for the built-in template — it has no Firestore doc.
+    final isBuiltIn = _pdfTemplates
+        .any((t) => t['id'] == templateId && t['isBuiltIn'] == true);
+    if (isBuiltIn) return;
+
     final previous = List<Map<String, dynamic>>.from(_pdfTemplates);
     setState(() => _pdfTemplates =
         _pdfTemplates.where((t) => t['id'] != templateId).toList());
@@ -1265,16 +1325,23 @@ class _SowHomeScreenState extends State<SowHomeScreen> {
   /// Opens a PDF template in the editor for direct editing (no project save).
   /// Clicking "Update Template" in the editor will PUT the changes back.
   void _editPdfTemplate(Map<String, dynamic> tpl) {
-    // Navigate with ?editTemplate=<id> so the URL reflects the open editor
-    // and any sub-route (e.g. /pdf/:docId) is dropped via didUpdateWidget.
-    final templateId = Uri.encodeQueryComponent(
-        tpl['id']?.toString() ?? '');
+    final isBuiltIn = tpl['isBuiltIn'] == true;
     final projectId = _selectedProject?.id ?? widget.initialProjectId;
-    if (projectId != null) {
-      context.go('/project/$projectId?editTemplate=$templateId');
-    } else {
-      context.go('${AppRoute.home.path}?editTemplate=$templateId');
+
+    // Built-in templates have no real Firestore id — skip the URL update so
+    // the synthetic id never reaches the backend on a page restore attempt.
+    if (!isBuiltIn) {
+      final templateId = Uri.encodeQueryComponent(tpl['id']?.toString() ?? '');
+      if (projectId != null) {
+        context.go('/project/$projectId?editTemplate=$templateId');
+      } else {
+        context.go('${AppRoute.home.path}?editTemplate=$templateId');
+      }
+    } else if (projectId != null) {
+      // Still drop any pdf/:docId sub-route so the main panel is clear.
+      context.go('/project/$projectId');
     }
+
     setState(() {
       _editingPdfTemplate = tpl;
       _currentPdfDocId = null;
@@ -1814,51 +1881,27 @@ class _MobileProjectsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        // AppBar area
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-          decoration: const BoxDecoration(
-            color: AppColors.surface,
-            border: Border(bottom: BorderSide(color: AppColors.borderStrong)),
-          ),
+        // Search bar + new project button
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 8, 0),
           child: Row(
             children: [
               Expanded(
-                child: Text(
-                  'Scope Projects',
-                  style: theme.textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                  ),
+                child: TextField(
+                  controller: searchController,
+                  onChanged: (_) => onSearchChanged(),
+                  decoration: AppInputs.search(hintText: 'Search projects'),
                 ),
-              ),
-              IconButton(
-                onPressed: onRefresh,
-                icon: const Icon(Icons.refresh_rounded),
-                visualDensity: VisualDensity.compact,
-                tooltip: 'Refresh',
               ),
               IconButton(
                 onPressed: onCreateProject,
                 icon: const Icon(Icons.add_rounded),
-                visualDensity: VisualDensity.compact,
                 tooltip: 'New Project',
               ),
-              _UserMenuButton(compact: true),
             ],
-          ),
-        ),
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: TextField(
-            controller: searchController,
-            onChanged: (_) => onSearchChanged(),
-            decoration: AppInputs.search(hintText: 'Search projects'),
           ),
         ),
         if (errorMessage != null)
@@ -3159,78 +3202,70 @@ class _ShellTopBar extends StatelessWidget {
   const _ShellTopBar({
     required this.projectCount,
     required this.selectedProject,
-    required this.creatingProject,
     required this.onRefresh,
-    required this.onCreateProject,
   });
 
   final int projectCount;
   final SowProjectModel? selectedProject;
-  final bool creatingProject;
   final VoidCallback onRefresh;
-  final VoidCallback onCreateProject;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isOwner = context.watch<AuthController>().user?.isOwner ?? false;
 
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(
-        AppSpacing.s5,
-        AppSpacing.s4,
-        AppSpacing.s5,
-        AppSpacing.s4,
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Scope of Work Transcription',
-                  style: theme.textTheme.titleLarge,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 520;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppSpacing.s5,
+            AppSpacing.s4,
+            AppSpacing.s5,
+            AppSpacing.s4,
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!compact)
+                      Text(
+                        'Scope of Work Transcription',
+                        style: theme.textTheme.titleLarge,
+                      ),
+                    if (!compact) const SizedBox(height: AppSpacing.s1),
+                    Text(
+                      selectedProject == null
+                          ? '$projectCount project${projectCount == 1 ? '' : 's'} ready for scope capture'
+                          : 'Active scope project: ${selectedProject!.name}',
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: AppColors.bodyMuted,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: AppSpacing.s1),
-                Text(
-                  selectedProject == null
-                      ? '$projectCount project${projectCount == 1 ? '' : 's'} ready for scope capture'
-                      : 'Active scope project: ${selectedProject!.name}',
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: AppColors.bodyMuted,
-                  ),
+              ),
+              const SizedBox(width: AppSpacing.s2),
+              if (compact)
+                IconButton(
+                  onPressed: onRefresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                  tooltip: 'Refresh Queue',
+                  visualDensity: VisualDensity.compact,
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: onRefresh,
+                  icon: const Icon(Icons.refresh_rounded),
+                  label: const Text('Refresh Queue'),
                 ),
-              ],
-            ),
+            ],
           ),
-          const SizedBox(width: AppSpacing.s2),
-          OutlinedButton.icon(
-            onPressed: onRefresh,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Refresh Queue'),
-          ),
-          const SizedBox(width: AppSpacing.s2),
-          ElevatedButton.icon(
-            onPressed: creatingProject ? null : onCreateProject,
-            icon:
-                creatingProject
-                    ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                    : const Icon(Icons.add_rounded),
-            label: Text(creatingProject ? 'Creating...' : 'New Project'),
-          ),
-          const SizedBox(width: AppSpacing.s2),
-          if (isOwner) ...[
-            const CreditsBadge(),
-            const SizedBox(width: AppSpacing.s2),
-          ],
-          _UserMenuButton(),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -3590,6 +3625,7 @@ class _SidebarPanel extends StatefulWidget {
     required this.onEditPdfTemplate,
     required this.onCreateTemplate,
     this.embedded = false,
+    this.onOpenSowSettings,
   });
 
   final bool loading;
@@ -3609,6 +3645,7 @@ class _SidebarPanel extends StatefulWidget {
   final void Function(Map<String, dynamic> template) onEditPdfTemplate;
   final VoidCallback onCreateTemplate;
   final bool embedded;
+  final VoidCallback? onOpenSowSettings;
 
   @override
   State<_SidebarPanel> createState() => _SidebarPanelState();
@@ -3655,34 +3692,33 @@ class _SidebarPanelState extends State<_SidebarPanel>
         // ── Header ─────────────────────────────────────────────────────
         Padding(
           padding: const EdgeInsets.fromLTRB(
-              AppSpacing.s4, AppSpacing.s4, AppSpacing.s4, AppSpacing.s3),
+              AppSpacing.s4, AppSpacing.s3, AppSpacing.s2, AppSpacing.s2),
           child: Row(
             children: [
-              Container(
-                width: 38,
-                height: 38,
-                decoration: BoxDecoration(
-                  color: AppColors.blue100,
-                  borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-                ),
-                child: const Icon(
-                  Icons.subject_rounded,
-                  color: AppColors.primary,
-                  size: 20,
+              const Icon(
+                Icons.subject_rounded,
+                color: AppColors.primary,
+                size: 17,
+              ),
+              const SizedBox(width: AppSpacing.s2),
+              Expanded(
+                child: Text(
+                  'Scope Projects',
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ),
-              const SizedBox(width: AppSpacing.s3),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+              Consumer<AuthController>(
+                builder: (context, auth, _) => Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('Scope Projects',
-                        style: theme.textTheme.titleMedium),
-                    const SizedBox(height: 1),
-                    Text(
-                      'Projects and reusable templates.',
-                      style: theme.textTheme.bodySmall,
-                    ),
+                    if (auth.user?.isOwner == true) ...[
+                      const CreditsBadge(compact: true),
+                      const SizedBox(width: AppSpacing.s1),
+                    ],
+                    _UserMenuButton(compact: true, onSowSettings: widget.onOpenSowSettings),
                   ],
                 ),
               ),
@@ -3709,8 +3745,6 @@ class _SidebarPanelState extends State<_SidebarPanel>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.folder_rounded, size: 14),
-                    const SizedBox(width: 5),
                     const Text('Projects'),
                     const SizedBox(width: 5),
                     _countBadge(
@@ -3722,8 +3756,6 @@ class _SidebarPanelState extends State<_SidebarPanel>
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const Icon(Icons.bookmark_rounded, size: 14),
-                    const SizedBox(width: 5),
                     const Text('Templates'),
                     const SizedBox(width: 5),
                     widget.templatesLoading
@@ -3752,20 +3784,23 @@ class _SidebarPanelState extends State<_SidebarPanel>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextField(
-                      controller: widget.searchController,
-                      onChanged: (_) => widget.onSearchChanged(),
-                      decoration:
-                          AppInputs.search(hintText: 'Search projects'),
-                    ),
-                    const SizedBox(height: AppSpacing.s3),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: widget.onCreateProjectTap,
-                        icon: const Icon(Icons.add_rounded),
-                        label: const Text('New Project'),
-                      ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: widget.searchController,
+                            onChanged: (_) => widget.onSearchChanged(),
+                            decoration:
+                                AppInputs.search(hintText: 'Search projects'),
+                          ),
+                        ),
+                        const SizedBox(width: AppSpacing.s1),
+                        IconButton(
+                          onPressed: widget.onCreateProjectTap,
+                          icon: const Icon(Icons.add_rounded),
+                          tooltip: 'New Project',
+                        ),
+                      ],
                     ),
                     if (widget.errorMessage != null) ...[
                       const SizedBox(height: AppSpacing.s3),
@@ -3932,21 +3967,27 @@ class _ProjectListTile extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
       child: AnimatedContainer(
-        duration: const Duration(milliseconds: 180),
+        duration: const Duration(milliseconds: 150),
         padding: const EdgeInsets.symmetric(
-          horizontal: AppSpacing.s3,
+          horizontal: AppSpacing.s2,
           vertical: AppSpacing.s2,
         ),
         decoration: BoxDecoration(
-          color: selected ? AppColors.blue50 : AppColors.surface,
+          color: selected ? AppColors.blue50 : AppColors.transparent,
           borderRadius: BorderRadius.circular(AppSpacing.radiusMd),
-          border: Border.all(
-            color: selected ? AppColors.primary : AppColors.border,
-          ),
-          boxShadow: selected ? null : AppShadows.card,
         ),
         child: Row(
           children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              width: 3,
+              height: 26,
+              margin: const EdgeInsets.only(right: AppSpacing.s2),
+              decoration: BoxDecoration(
+                color: selected ? AppColors.primary : AppColors.transparent,
+                borderRadius: BorderRadius.circular(AppSpacing.radiusFull),
+              ),
+            ),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -3955,9 +3996,10 @@ class _ProjectListTile extends StatelessWidget {
                     project.name,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodyMedium?.copyWith(
+                    style: theme.textTheme.bodySmall?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: AppColors.body,
+                      color:
+                          selected ? AppColors.primary : AppColors.body,
                     ),
                   ),
                   if (project.clientName.isNotEmpty) ...[
@@ -3966,7 +4008,7 @@ class _ProjectListTile extends StatelessWidget {
                       project.clientName,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.bodySmall?.copyWith(
+                      style: theme.textTheme.labelSmall?.copyWith(
                         color: AppColors.bodyMuted,
                       ),
                     ),
@@ -3974,7 +4016,7 @@ class _ProjectListTile extends StatelessWidget {
                 ],
               ),
             ),
-            const SizedBox(width: AppSpacing.s2),
+            const SizedBox(width: AppSpacing.s1),
             _StatusChip(status: project.statusLabel),
           ],
         ),
@@ -4092,6 +4134,7 @@ class _PdfTemplateTile extends StatelessWidget {
     final name = (template['name'] as String?)?.trim().isNotEmpty == true
         ? template['name'] as String
         : 'Untitled PDF Template';
+    final isBuiltIn = template['isBuiltIn'] == true;
     final pdfJson = template['pdfJson'];
     final elementCount = pdfJson is Map<String, dynamic> &&
             pdfJson['elements'] is List
@@ -4101,7 +4144,9 @@ class _PdfTemplateTile extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.surface,
         borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(
+          color: isBuiltIn ? AppColors.primary.withValues(alpha: 0.4) : AppColors.border,
+        ),
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.symmetric(
@@ -4113,12 +4158,35 @@ class _PdfTemplateTile extends StatelessWidget {
           color: AppColors.danger,
           size: 20,
         ),
-        title: Text(
-          name,
-          style: theme.textTheme.bodyMedium
-              ?.copyWith(fontWeight: FontWeight.w600),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        title: Row(
+          children: [
+            Flexible(
+              child: Text(
+                name,
+                style: theme.textTheme.bodyMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (isBuiltIn) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppColors.primary.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  'Default',
+                  style: theme.textTheme.labelSmall?.copyWith(
+                    color: AppColors.primary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ],
         ),
         subtitle: Text(
           '$elementCount element${elementCount == 1 ? '' : 's'} \u00b7 PDF layout',
@@ -4130,14 +4198,15 @@ class _PdfTemplateTile extends StatelessWidget {
           children: [
             TextButton(
               onPressed: onEdit,
-              child: const Text('Edit'),
+              child: Text(isBuiltIn ? 'Use' : 'Edit'),
             ),
-            IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, size: 18),
-              color: AppColors.danger,
-              tooltip: 'Delete PDF template',
-              onPressed: onDelete,
-            ),
+            if (!isBuiltIn)
+              IconButton(
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                color: AppColors.danger,
+                tooltip: 'Delete PDF template',
+                onPressed: onDelete,
+              ),
           ],
         ),
       ),
@@ -4368,29 +4437,30 @@ class _WorkspaceContentState extends State<_WorkspaceContent> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.project.name,
-                          style: theme.textTheme.headlineSmall,
+              LayoutBuilder(
+                builder: (context, headerConstraints) {
+                  final narrow = headerConstraints.maxWidth < 420;
+                  final titleCol = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.project.name,
+                        style: theme.textTheme.headlineSmall,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: AppSpacing.s1),
+                      Text(
+                        '${widget.project.clientName} – ${widget.project.siteLocation.isEmpty ? 'No site yet' : widget.project.siteLocation}',
+                        style: theme.textTheme.bodyMedium?.copyWith(
+                          color: AppColors.bodyMuted,
                         ),
-                        const SizedBox(height: AppSpacing.s1),
-                        Text(
-                          '${widget.project.clientName} – ${widget.project.siteLocation.isEmpty ? 'No site yet' : widget.project.siteLocation}',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: AppColors.bodyMuted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: AppSpacing.s4),
-                  FilledButton.icon(
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  );
+                  final talkBtn = FilledButton.icon(
                     onPressed: isRecording || isBusy
                         ? null
                         : () => context.pushNamed(
@@ -4406,10 +4476,35 @@ class _WorkspaceContentState extends State<_WorkspaceContent> {
                       foregroundColor: Colors.white,
                       minimumSize: const Size(0, 36),
                     ),
-                  ),
-                  const SizedBox(width: AppSpacing.s3),
-                  _StatusChip(status: widget.project.statusLabel),
-                ],
+                  );
+                  final statusChip = _StatusChip(status: widget.project.statusLabel);
+                  if (narrow) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        titleCol,
+                        const SizedBox(height: AppSpacing.s2),
+                        Row(
+                          children: [
+                            talkBtn,
+                            const SizedBox(width: AppSpacing.s3),
+                            statusChip,
+                          ],
+                        ),
+                      ],
+                    );
+                  }
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: titleCol),
+                      const SizedBox(width: AppSpacing.s4),
+                      talkBtn,
+                      const SizedBox(width: AppSpacing.s3),
+                      statusChip,
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: AppSpacing.s3),
               Wrap(
@@ -6144,9 +6239,10 @@ class _InlineMessage extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _UserMenuButton extends StatelessWidget {
-  const _UserMenuButton({this.compact = false});
+  const _UserMenuButton({this.compact = false, this.onSowSettings});
 
   final bool compact;
+  final VoidCallback? onSowSettings;
 
   @override
   Widget build(BuildContext context) {
@@ -6306,7 +6402,11 @@ class _UserMenuButton extends StatelessWidget {
       case _UserMenuAction.teamSettings:
         context.pushNamed(AppRoute.teamSettings.name);
       case _UserMenuAction.sowSettings:
-        context.pushNamed(AppRoute.sowSettings.name);
+        if (onSowSettings != null) {
+          onSowSettings!();
+        } else {
+          context.pushNamed(AppRoute.sowSettings.name);
+        }
       case _UserMenuAction.activityLog:
         context.pushNamed(AppRoute.activityLog.name);
       case _UserMenuAction.billing:
@@ -6331,3 +6431,311 @@ class _UserMenuButton extends StatelessWidget {
 }
 
 enum _UserMenuAction { inviteTeam, companySettings, teamSettings, sowSettings, activityLog, billing, signOut, deleteAccount }
+
+// ── SOW Settings left-bar overlay ─────────────────────────────────────────────
+
+class _SowSettingsOverlay extends StatefulWidget {
+  const _SowSettingsOverlay({required this.onClose});
+  final VoidCallback onClose;
+
+  @override
+  State<_SowSettingsOverlay> createState() => _SowSettingsOverlayState();
+}
+
+class _SowSettingsOverlayState extends State<_SowSettingsOverlay>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _anim;
+  late Animation<Offset> _slide;
+
+  final _instructionsController = TextEditingController();
+  final _notesController = TextEditingController();
+  bool _includeMaterials = true;
+  bool _includeEstimate = true;
+  bool _loading = true;
+  bool _saving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _anim = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _slide = Tween<Offset>(
+      begin: const Offset(-1, 0),
+      end: Offset.zero,
+    ).animate(CurvedAnimation(parent: _anim, curve: Curves.easeOutCubic));
+    _anim.forward();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _anim.dispose();
+    _instructionsController.dispose();
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final prefs = SowSharedPrefsService();
+    final settings = await prefs.loadSowSettings();
+    if (!mounted) return;
+    setState(() {
+      _instructionsController.text = settings.specialInstructions;
+      _notesController.text = settings.notes;
+      _includeMaterials = settings.includeMaterials;
+      _includeEstimate = settings.includeEstimate;
+      _loading = false;
+    });
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      await SowSharedPrefsService().saveSowSettings(
+        SowSettings(
+          specialInstructions: _instructionsController.text.trim(),
+          notes: _notesController.text.trim(),
+          includeMaterials: _includeMaterials,
+          includeEstimate: _includeEstimate,
+        ),
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('SOW settings saved'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      widget.onClose();
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+
+    return SlideTransition(
+      position: _slide,
+      child: Container(
+        decoration: const BoxDecoration(
+          color: AppColors.pageBackground,
+          border: Border(right: BorderSide(color: AppColors.borderStrong)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // ── Header ──────────────────────────────────────────────────
+            Container(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.s4, AppSpacing.s3, AppSpacing.s2, AppSpacing.s3),
+              decoration: const BoxDecoration(
+                color: AppColors.surface,
+                border: Border(bottom: BorderSide(color: AppColors.border)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.tune_rounded,
+                      size: 17, color: AppColors.primary),
+                  const SizedBox(width: AppSpacing.s2),
+                  Expanded(
+                    child: Text(
+                      'SOW Settings',
+                      style: theme.textTheme.titleSmall
+                          ?.copyWith(fontWeight: FontWeight.w700),
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, size: 18),
+                    onPressed: widget.onClose,
+                    tooltip: 'Close',
+                    visualDensity: VisualDensity.compact,
+                    color: AppColors.bodyMuted,
+                  ),
+                ],
+              ),
+            ),
+
+            // ── Body ────────────────────────────────────────────────────
+            Expanded(
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : SingleChildScrollView(
+                      padding: const EdgeInsets.all(AppSpacing.s4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Generation preferences',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Applied every time you generate a Scope of Work.',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: AppColors.bodyMuted),
+                          ),
+                          const SizedBox(height: AppSpacing.s4),
+
+                          Text('Special instructions',
+                              style: theme.textTheme.labelMedium),
+                          const SizedBox(height: AppSpacing.s1),
+                          Text(
+                            'Custom directives sent to the AI.',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: AppColors.bodyMuted),
+                          ),
+                          const SizedBox(height: AppSpacing.s2),
+                          TextField(
+                            controller: _instructionsController,
+                            minLines: 3,
+                            maxLines: 5,
+                            decoration: AppInputs.multiline(
+                              labelText: 'Special instructions',
+                              hintText:
+                                  'e.g. "Always add a safety section."',
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.s4),
+
+                          Text('Notes', style: theme.textTheme.labelMedium),
+                          const SizedBox(height: AppSpacing.s1),
+                          Text(
+                            'Extra context appended to every SOW request.',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: AppColors.bodyMuted),
+                          ),
+                          const SizedBox(height: AppSpacing.s2),
+                          TextField(
+                            controller: _notesController,
+                            minLines: 3,
+                            maxLines: 5,
+                            decoration: AppInputs.multiline(
+                              labelText: 'Notes',
+                              hintText:
+                                  'e.g. "Client prefers itemised cost per trade."',
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.s4),
+
+                          Text(
+                            'Sections to include',
+                            style: theme.textTheme.labelLarge?.copyWith(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: AppSpacing.s1),
+                          Text(
+                            'Toggle which sections appear in the generated document.',
+                            style: theme.textTheme.bodySmall
+                                ?.copyWith(color: AppColors.bodyMuted),
+                          ),
+                          const SizedBox(height: AppSpacing.s3),
+                          _OverlayCheckboxTile(
+                            title: 'Materials Required',
+                            subtitle: 'List with estimated quantities.',
+                            value: _includeMaterials,
+                            onChanged: (v) =>
+                                setState(() => _includeMaterials = v!),
+                          ),
+                          const SizedBox(height: AppSpacing.s2),
+                          _OverlayCheckboxTile(
+                            title: 'Labour Estimate',
+                            subtitle: 'Tasks with estimated hours.',
+                            value: _includeEstimate,
+                            onChanged: (v) =>
+                                setState(() => _includeEstimate = v!),
+                          ),
+                          const SizedBox(height: AppSpacing.s5),
+
+                          SizedBox(
+                            width: double.infinity,
+                            child: FilledButton(
+                              onPressed: _saving ? null : _save,
+                              child: _saving
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text('Save settings'),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _OverlayCheckboxTile extends StatelessWidget {
+  const _OverlayCheckboxTile({
+    required this.title,
+    required this.subtitle,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String title;
+  final String subtitle;
+  final bool value;
+  final ValueChanged<bool?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return InkWell(
+      onTap: () => onChanged(!value),
+      borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+      child: Container(
+        padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.s3,
+          vertical: AppSpacing.s2,
+        ),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(AppSpacing.radiusLg),
+          border: Border.all(
+            color: value ? AppColors.primary : AppColors.border,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: theme.textTheme.labelMedium),
+                  const SizedBox(height: 1),
+                  Text(
+                    subtitle,
+                    style: theme.textTheme.bodySmall
+                        ?.copyWith(color: AppColors.bodyMuted),
+                  ),
+                ],
+              ),
+            ),
+            Checkbox(
+              value: value,
+              onChanged: onChanged,
+              activeColor: AppColors.primary,
+              materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}

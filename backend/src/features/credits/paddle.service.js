@@ -21,25 +21,25 @@ export const CREDIT_PACKS = [
     id: 'pack_50',
     priceId: process.env.PADDLE_PRICE_50_CREDITS ?? '',
     credits: 50,
-    priceUsd: 2249,          // cents
+    priceUsd: 1750,          // cents — $0.35 per credit
     label: '50 Credits',
-    description: '$22.49 — $0.45 per credit',
+    description: '$17.50 — $0.35 per credit',
   },
   {
     id: 'pack_150',
     priceId: process.env.PADDLE_PRICE_150_CREDITS ?? '',
     credits: 150,
-    priceUsd: 5999,
+    priceUsd: 4500,          // cents — $0.30 per credit
     label: '150 Credits',
-    description: '$59.99 — $0.40 per credit',
+    description: '$45.00 — $0.30 per credit',
   },
   {
     id: 'pack_300',
     priceId: process.env.PADDLE_PRICE_300_CREDITS ?? '',
     credits: 300,
-    priceUsd: 11249,
+    priceUsd: 7500,          // cents — $0.25 per credit
     label: '300 Credits',
-    description: '$112.49 — $0.37 per credit',
+    description: '$75.00 — $0.25 per credit',
   },
 ];
 
@@ -110,22 +110,48 @@ async function _paddleFetch(method, path, body = null) {
 }
 
 /**
- * Creates a Paddle transaction and returns the hosted checkout URL.
+ * Creates a Paddle transaction and returns the hosted checkout URL plus the
+ * transaction id, so the caller can record a pending purchase for later
+ * reconciliation (the safety net for missed/delayed webhooks).
+ *
  * @param {object} opts
  * @param {string} opts.priceId   - Paddle price ID for the item
  * @param {string} opts.uid       - Firebase UID stored as custom_data
  * @param {string} opts.email     - Customer email pre-filled in checkout
- * @param {string} opts.returnUrl - Page to redirect to after payment
+ * @param {string} opts.returnUrl - Page/app deep-link to return to after payment
+ * @returns {Promise<{url: string|null, transactionId: string|null, customerId: string|null}>}
  */
 export async function createPaddleCheckout({ priceId, uid, email, returnUrl }) {
   const body = {
     items: [{ price_id: priceId, quantity: 1 }],
-    customer: { email },
+    // uid travels with the transaction AND any subscription Paddle spawns from
+    // it, so webhooks and reconciliation can always attribute the payment.
     custom_data: { uid },
     checkout: { url: returnUrl },
   };
+  // Only attach a customer when we actually have an email; Paddle rejects
+  // an empty-string email.
+  if (email) body.customer = { email };
+
   const data = await _paddleFetch('POST', '/transactions', body);
-  return data.data?.checkout?.url ?? null;
+  return {
+    url: data.data?.checkout?.url ?? null,
+    transactionId: data.data?.id ?? null,
+    customerId: data.data?.customer_id ?? null,
+  };
+}
+
+/**
+ * Fetches a single transaction straight from the Paddle API. Used by the
+ * reconciliation endpoint to confirm a payment really completed before
+ * granting credits — never trust the client, only Paddle's own record.
+ * @param {string} transactionId
+ * @returns {Promise<object|null>} The Paddle transaction `data` object.
+ */
+export async function getPaddleTransaction(transactionId) {
+  if (!transactionId) return null;
+  const data = await _paddleFetch('GET', `/transactions/${transactionId}`);
+  return data.data ?? null;
 }
 
 // ── Webhook verification ──────────────────────────────────────────────────────

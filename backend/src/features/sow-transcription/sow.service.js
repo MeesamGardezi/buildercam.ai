@@ -271,6 +271,11 @@ Rules:
   }
 }
 
+function _formatDate(d) {
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+}
+
 function _buildSowPrompt(project, transcripts, settings = {}) {
   const {
     specialInstructions = '',
@@ -280,6 +285,8 @@ function _buildSowPrompt(project, transcripts, settings = {}) {
     categories = [],
     categoryNotes = '',
   } = settings;
+
+  const today = _formatDate(new Date());
 
   const lines = [
     'You are a professional construction estimator. Generate a detailed, professional Scope of Work (SOW) document based on the following voice recordings captured during a site visit.',
@@ -291,6 +298,10 @@ function _buildSowPrompt(project, transcripts, settings = {}) {
   if (project.siteLocation) lines.push(`  Site         : ${project.siteLocation}`);
   if (project.scopeSummary) lines.push(`  Scope note   : ${project.scopeSummary}`);
   if (project.notes) lines.push(`  Notes        : ${project.notes}`);
+  lines.push(
+    `  Date         : ${today}`,
+    '  (Use this exact date wherever a document date, issue date, or "Date:" field appears. Do not invent or guess a date.)',
+  );
 
   // Company trade categories.
   if (Array.isArray(categories) && categories.length > 0) {

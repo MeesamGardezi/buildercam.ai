@@ -2,15 +2,22 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:in_app_purchase/in_app_purchase.dart';
 
 import '../models/credit_model.dart';
+import '../services/apple_iap_service.dart';
 import '../services/credits_service.dart';
 
 class CreditsController extends ChangeNotifier {
-  CreditsController(this._service, this._tokenProvider);
+  CreditsController(this._service, this._tokenProvider)
+      : appleIap = AppleIapService(_service, _tokenProvider);
 
   final CreditsService _service;
   final Future<String?> Function() _tokenProvider;
+
+  /// StoreKit purchase driver for iOS. Call [initAppleIap] once before use.
+  final AppleIapService appleIap;
+  StreamSubscription<AppleIapEvent>? _appleIapSub;
 
   int _balance = 0;
   CreditSubscription? _subscription;
@@ -132,6 +139,66 @@ class CreditsController extends ChangeNotifier {
     // Final settle in case state changed without us catching the transition.
     return _balance > beforeBalance ||
         (!beforeSub && _subscription?.isActive == true);
+  }
+
+  // ── Apple In-App Purchase (iOS) ────────────────────────────────────────────
+
+  /// Starts listening to StoreKit purchase updates. Idempotent — safe to call
+  /// every time the billing screen mounts. Must be called before [buyApplePack]
+  /// / [buyAppleSubscription] so no purchase update is missed.
+  void initAppleIap() {
+    if (_appleIapSub != null) return;
+    appleIap.start();
+    _appleIapSub = appleIap.events.listen((event) {
+      switch (event.outcome) {
+        case AppleIapOutcome.success:
+          if (event.balance != null) _balance = event.balance!;
+          _subscription = event.subscription;
+          _clearError();
+          unawaited(loadTransactions());
+          break;
+        case AppleIapOutcome.error:
+          _setError(event.message ?? 'Purchase failed.');
+          break;
+        case AppleIapOutcome.cancelled:
+          break;
+      }
+    });
+  }
+
+  Future<List<ProductDetails>> queryAppleProducts(Set<String> productIds) async {
+    final response = await appleIap.queryProducts(productIds);
+    if (response.notFoundIDs.isNotEmpty) {
+      debugPrint('[credits] Apple products not found: ${response.notFoundIDs}');
+    }
+    return response.productDetails;
+  }
+
+  Future<void> buyApplePack(ProductDetails product) async {
+    _clearError();
+    try {
+      await appleIap.buyPack(product);
+    } catch (e) {
+      _setError(e.toString());
+    }
+  }
+
+  Future<void> buyAppleSubscription(ProductDetails product) async {
+    _clearError();
+    try {
+      await appleIap.buySubscription(product);
+    } catch (e) {
+      _setError(e.toString());
+    }
+  }
+
+  Future<void> restoreApplePurchases() => appleIap.restorePurchases();
+
+  @override
+  void dispose() {
+    _appleIapSub?.cancel();
+    appleIap.dispose();
+    super.dispose();
   }
 
   // ── Private ────────────────────────────────────────────────────────────────

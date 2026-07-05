@@ -121,6 +121,32 @@ class CreditsService {
     );
   }
 
+  // ── Apple In-App Purchase ────────────────────────────────────────────────────
+
+  /// Verifies an Apple IAP transaction straight against Apple's servers via
+  /// the backend and grants any owed credits. Returns the same tuple shape as
+  /// [syncPayments] so callers can share a single "settle wallet state" path.
+  Future<({int balance, CreditSubscription? subscription, bool applied})>
+      verifyApplePurchase({
+    required String idToken,
+    required String transactionId,
+  }) async {
+    final res = await _client.post(
+      _base.resolve('/api/credits/apple/verify'),
+      headers: _auth(idToken),
+      body: jsonEncode({'transactionId': transactionId}),
+    );
+    _assert(res, 'verifyApplePurchase');
+    final data = _decode(res);
+    final sub = data['subscription'];
+    return (
+      balance: (data['balance'] as num?)?.toInt() ?? 0,
+      subscription:
+          sub == null ? null : CreditSubscription.fromJson(sub as Map<String, dynamic>),
+      applied: data['applied'] == true,
+    );
+  }
+
   // ── Helpers ────────────────────────────────────────────────────────────────
 
   Map<String, String> _auth(String token) => {

@@ -83,10 +83,15 @@ class AuthController {
 
   async updateCompanySettings(req, res) {
     try {
-      const { categories, notes } = req.body;
+      const { categories, notes, logoUrl, companyName, address, phone, email } = req.body;
       const settings = await authService.updateCompanySettings(req.user.companyId, {
         categories,
         notes,
+        logoUrl,
+        companyName,
+        address,
+        phone,
+        email,
       });
       return res.json({ success: true, settings });
     } catch (error) {

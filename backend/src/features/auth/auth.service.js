@@ -265,27 +265,43 @@ export async function deleteOwnAccount(uid, companyId, role) {
 
 export async function getCompanySettings(companyId) {
   const doc = await getFirestore().collection(COMPANIES_COLLECTION).doc(companyId).get();
-  if (!doc.exists) return { categories: [], notes: '' };
+  if (!doc.exists) return { categories: [], notes: '', logoUrl: '', companyName: '', address: '', phone: '', email: '' };
   const data = doc.data();
   return {
     categories: Array.isArray(data.settings?.categories) ? data.settings.categories : [],
     notes: typeof data.settings?.notes === 'string' ? data.settings.notes : '',
+    logoUrl: typeof data.settings?.logoUrl === 'string' ? data.settings.logoUrl : '',
+    companyName: typeof data.settings?.companyName === 'string' ? data.settings.companyName : '',
+    address: typeof data.settings?.address === 'string' ? data.settings.address : '',
+    phone: typeof data.settings?.phone === 'string' ? data.settings.phone : '',
+    email: typeof data.settings?.email === 'string' ? data.settings.email : '',
   };
 }
 
-export async function updateCompanySettings(companyId, { categories, notes }) {
+export async function updateCompanySettings(companyId, { categories, notes, logoUrl, companyName, address, phone, email }) {
   const sanitizedCategories = Array.isArray(categories)
     ? categories.map((c) => String(c).trim()).filter(Boolean)
     : [];
   const sanitizedNotes = typeof notes === 'string' ? notes.trim() : '';
+  const sanitizedLogoUrl = typeof logoUrl === 'string' ? logoUrl.trim() : '';
+  const sanitizedCompanyName = typeof companyName === 'string' ? companyName.trim() : '';
+  const sanitizedAddress = typeof address === 'string' ? address.trim() : '';
+  const sanitizedPhone = typeof phone === 'string' ? phone.trim() : '';
+  const sanitizedEmail = typeof email === 'string' ? email.trim() : '';
+  const settings = {
+    categories: sanitizedCategories,
+    notes: sanitizedNotes,
+    logoUrl: sanitizedLogoUrl,
+    companyName: sanitizedCompanyName,
+    address: sanitizedAddress,
+    phone: sanitizedPhone,
+    email: sanitizedEmail,
+  };
   await getFirestore()
     .collection(COMPANIES_COLLECTION)
     .doc(companyId)
-    .set(
-      { settings: { categories: sanitizedCategories, notes: sanitizedNotes }, updatedAt: new Date() },
-      { merge: true },
-    );
-  return { categories: sanitizedCategories, notes: sanitizedNotes };
+    .set({ settings, updatedAt: new Date() }, { merge: true });
+  return settings;
 }
 
 function _serializeCompany(data = {}) {

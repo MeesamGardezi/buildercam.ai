@@ -167,9 +167,14 @@ class _InviteMemberScreenState extends State<InviteMemberScreen> {
         elevation: 0,
         title: const Text('Team Members'),
       ),
-      body: ListView(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(AppSpacing.s5),
-        children: [
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
           // ── Add member form ────────────────────────────────────────────────
           Text('Add Team Member', style: theme.textTheme.titleMedium),
           const SizedBox(height: AppSpacing.s1),
@@ -264,7 +269,10 @@ class _InviteMemberScreenState extends State<InviteMemberScreen> {
                     : null,
               ),
             )),
-        ],
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

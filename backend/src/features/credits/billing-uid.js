@@ -6,29 +6,30 @@ import { getFirestore } from '../../config/firebase-admin.js';
 const COMPANIES_COLLECTION = 'companies';
 
 /**
- * Returns the wallet uid for the authenticated request. Owners use their own
- * uid; members resolve to their company's `ownerUid`. The result is memoised
- * on the request as `req.billingUid`.
+ * Core resolver — accepts a plain user object `{uid, role, companyId}`.
+ * Owners (or users without a companyId) bill to themselves; members resolve
+ * to their company's `ownerUid`.
  */
-export async function resolveBillingUid(req) {
-  if (!req?.user) return null;
-  if (req.billingUid) return req.billingUid;
-
-  const { uid, role, companyId } = req.user;
-  if (role === 'owner' || !companyId) {
-    req.billingUid = uid;
-    return uid;
-  }
-
+export async function resolveBillingUidForUser({ uid, role, companyId }) {
+  if (role === 'owner' || !companyId) return uid;
   try {
     const doc = await getFirestore()
       .collection(COMPANIES_COLLECTION)
       .doc(companyId)
       .get();
-    const ownerUid = doc.exists ? doc.data().ownerUid : null;
-    req.billingUid = ownerUid || uid;
+    return (doc.exists ? doc.data().ownerUid : null) || uid;
   } catch {
-    req.billingUid = uid;
+    return uid;
   }
+}
+
+/**
+ * HTTP-request wrapper around resolveBillingUidForUser. Memoises the result
+ * on the request object so repeated calls within the same request are free.
+ */
+export async function resolveBillingUid(req) {
+  if (!req?.user) return null;
+  if (req.billingUid) return req.billingUid;
+  req.billingUid = await resolveBillingUidForUser(req.user);
   return req.billingUid;
 }
